@@ -6,3 +6,5 @@ git clone https://github.com/TinyAntu/GeoInformatica-Sitios-ptimos-para-Energ-a-
 pip install -r requirements.txt
 
 python scripts/run pipeline.py --config config.yaml.
+
+Para descargar los datos por favor acceda a: 
