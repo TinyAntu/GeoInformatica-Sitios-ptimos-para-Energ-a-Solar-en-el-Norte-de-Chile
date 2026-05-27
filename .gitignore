@@ -1,3 +1,16 @@
 data/processed/
 data/raw/
 data/result/
+
+*. tif
+*. gpkg
+*. shp
+# Python
+__pycache__ /
+*. pyc
+# Virtual Environment
+. venv /
+. ipynb_checkpoints /
+# Sistema y editor
+. DS_Store
+. vscode /

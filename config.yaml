@@ -19,8 +19,10 @@ paths:
     ghi_32718: "data/processed/GHI_32718.tif"
     dem_32718: "data/processed/dem_norte_32718.tif"
     slope: "data/processed/slope_norte.tif"
+    aspect: "data/processed/aspect_norte.tif"
   results:
     dataset_ml: "data/results/dataset_entrenamiento_rf.shp"
+    model_rf: "data/results/model_rf.pkl"
 
 # Parámetros AHP y criterios de elegibilidad
 criterios:
