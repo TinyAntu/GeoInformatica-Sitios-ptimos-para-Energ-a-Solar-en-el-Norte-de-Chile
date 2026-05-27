@@ -1,50 +1,47 @@
-﻿import sys
+import sys
 import os
+import argparse
 import yaml
 
-# 1. TRUCO DE RUTAS: Le decimos a Python que busque módulos en la carpeta principal (raíz)
-# Esto soluciona el "ModuleNotFoundError: No module named 'src'"
+# Permite importar módulos desde la raíz del proyecto
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.preprocessing import cargar_capas_vectoriales, procesar_dem, reproject_raster_to_utm
 from src.sampling import generar_dataset_muestras
 from src.modeling import entrenar_modelo_rf
+from src.utils import _esta_actualizado
+
+
+def _resolver_rutas(obj, base_dir: str):
+    """Convierte recursivamente todas las rutas relativas del config a absolutas."""
+    if isinstance(obj, str):
+        return os.path.join(base_dir, obj) if not os.path.isabs(obj) else obj
+    if isinstance(obj, dict):
+        return {k: _resolver_rutas(v, base_dir) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_resolver_rutas(item, base_dir) for item in obj]
+    return obj
 
 
 def _shapefile_paths(shp_path: str) -> list:
     base, _ = os.path.splitext(shp_path)
-    return [base + ext for ext in ['.shp', '.dbf', '.shx', '.prj', '.cpg', '.qpj']]
-
-
-def _esta_actualizado(paths_entrada: list, paths_salida: list) -> bool:
-    # Verifica que todos los archivos de salida existan
-    if not paths_salida or any(not os.path.exists(path) for path in paths_salida):
-        return False
-    
-    # Obtiene la fecha más reciente de los archivos de entrada
-    if not paths_entrada or any(not os.path.exists(path) for path in paths_entrada):
-        return False
-    
-    tiempo_entrada_max = max(os.path.getmtime(path) for path in paths_entrada if os.path.exists(path))
-    
-    # Obtiene la fecha más antigua de los archivos de salida
-    tiempo_salida_min = min(os.path.getmtime(path) for path in paths_salida if os.path.exists(path))
-    
-    # Retorna True si la salida es más reciente que la entrada
-    return tiempo_salida_min > tiempo_entrada_max
-
-
-def _archivos_existentes(paths: list) -> bool:
-    return all(os.path.exists(path) for path in paths)
+    return [base + ext for ext in ['.shp', '.dbf', '.shx', '.prj', '.cpg']]
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Pipeline Solar Norte de Chile')
+    parser.add_argument('--config', default='config.yaml', help='Ruta al archivo de configuración')
+    args = parser.parse_args()
+
     print("Iniciando Pipeline Solar...")
 
-    ruta_config = os.path.join(directorio_raiz, 'config.yaml')
-    with open(ruta_config, 'r', encoding='utf-8') as file:
-        config = yaml.safe_load(file)
+    ruta_config = os.path.join(directorio_raiz, args.config)
+    with open(ruta_config, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+
+    # Resuelve todas las rutas relativas del config contra la raíz del proyecto
+    config['paths'] = _resolver_rutas(config['paths'], directorio_raiz)
 
     print("Configuración cargada exitosamente.")
 
@@ -54,43 +51,30 @@ def main():
     processed = config['paths']['processed']
     results = config['paths']['results']
 
-    dem_out = processed['dem_32718']
-    slope_out = processed['slope']
+    dem_out    = processed['dem_32718']
+    slope_out  = processed['slope']
     aspect_out = processed['aspect']
     ghi_utm_out = processed['ghi_32718']
 
-    # Verificar independientemente cada archivo DEM
-    slope_existe = os.path.exists(slope_out)
-    aspect_existe = os.path.exists(aspect_out)
-    dem_existe = os.path.exists(dem_out)
-    
-    if slope_existe and aspect_existe and dem_existe:
-        print("Los archivos DEM ya existen. Se omite la fusión y el reprocesado.")
-    else:
-        if slope_existe:
-            print(f"✓ Slope existe: {slope_out}")
-        if aspect_existe:
-            print(f"✓ Aspect existe: {aspect_out}")
-        if not dem_existe:
-            print(f"✗ DEM no existe: {dem_out} - será procesado")
-        
-        procesar_dem(
-            carpetas_dem=config['paths']['raw']['rasters']['dem_folders'],
-            out_slope_path=slope_out,
-            out_aspect_path=aspect_out,
-            out_dem_path=dem_out,
-        )
+    # --- Etapa 1: DEM ---
+    # procesar_dem() omite el proceso si los archivos ya existen en procesados.
+    procesar_dem(
+        carpetas_dem=config['paths']['raw']['rasters']['dem_folders'],
+        out_slope_path=slope_out,
+        out_aspect_path=aspect_out,
+        out_dem_path=dem_out,
+    )
 
+    # --- Etapa 2: Reproyección GHI ---
+    # reproject_raster_to_utm() omite el proceso si el archivo ya existe en procesados.
     raw_ghi = config['paths']['raw']['rasters']['ghi']
-    if not _esta_actualizado([raw_ghi], [ghi_utm_out]):
-        reproject_raster_to_utm(raw_ghi, ghi_utm_out, epsg_code=32718)
-    else:
-        print(f"El raster GHI ya está actualizado: {ghi_utm_out}")
+    reproject_raster_to_utm(raw_ghi, ghi_utm_out, epsg_code=32718)
 
+    # --- Etapa 3: Muestreo y entrenamiento ---
     dataset_out = results['dataset_ml']
-    model_out = results.get('model_rf')
+    model_out   = results.get('model_rf')
 
-    entradas_dataset = [ruta_config, raw_ghi, ghi_utm_out, slope_out, dem_out]
+    entradas_dataset = [ruta_config, raw_ghi, ghi_utm_out, slope_out, aspect_out, dem_out]
     entradas_dataset.extend(config['paths']['raw']['vectores'].values())
     salidas_dataset = _shapefile_paths(dataset_out)
     if model_out:
@@ -104,20 +88,27 @@ def main():
             os.makedirs(os.path.dirname(model_out), exist_ok=True)
 
         rutas_rasters = {
-            'ghi_32718': ghi_utm_out,
-            'slope': slope_out,
-            'dem_32718': dem_out
+            'ghi_32718':  ghi_utm_out,
+            'slope':      slope_out,
+            'aspect':     aspect_out,
+            'dem_32718':  dem_out,
         }
 
-        positivas, pool_negativos = generar_dataset_muestras(vectores, rutas_rasters, config['criterios'])
+        ml = config['ml_params']
+        positivas, pool_negativos = generar_dataset_muestras(
+            vectores, rutas_rasters, config['criterios'],
+            ratio=ml['ratio_negativos'],
+            random_state=ml['random_state'],
+        )
         entrenar_modelo_rf(
             positivas=positivas,
             pool_negativos=pool_negativos,
-            ratio=config['ml_params']['ratio_negativos'],
+            ratio=ml['ratio_negativos'],
             out_shp=dataset_out,
-            random_state=config['ml_params']['random_state'],
+            random_state=ml['random_state'],
             out_model_path=model_out,
-            n_estimators=config['ml_params']['n_estimators']
+            n_estimators=ml['n_estimators'],
+            ratio_alt=ml.get('ratio_alt'),
         )
 
     print("Pipeline ejecutado correctamente.")
