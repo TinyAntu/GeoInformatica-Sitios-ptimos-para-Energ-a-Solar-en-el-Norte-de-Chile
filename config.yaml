@@ -1,0 +1,36 @@
+# Rutas de datos (separadas por crudos, procesados y resultados)
+paths:
+  raw:
+    rasters:
+      ghi: "data/raw/GHI.tif"
+      dem_folders: 
+        - "data/raw/Norte_Region_II_DEM"
+        - "data/raw/Norte_Region_III_DEM"
+    vectores:
+      regiones: "data/raw/REGIONES/REGIONES_v1.shp"
+      fotovoltaicas: "data/raw/Paneles.gdb"
+      lineas: "data/raw/Linea_de_Transmision/Línea_de_Transmisión.shp"
+      almacenamiento: "data/raw/Almacenamiento_de_Energia/Almacenamiento_de_Energía.shp"
+      subestaciones: "data/raw/Subestaciones/Subestaciones.shp"
+      areas_pobladas: "data/raw/Areas_Pobladas/Areas_Pobladas.shp"
+      masas_lacustres: "data/raw/Masas_Lacustres/masas_lacustres.shp"
+      snap: "data/raw/SNAP_ Mayo 2026/SNAP_.shp"
+  processed:
+    ghi_32718: "data/processed/GHI_32718.tif"
+    dem_32718: "data/processed/dem_norte_32718.tif"
+    slope: "data/processed/slope_norte.tif"
+  results:
+    dataset_ml: "data/results/dataset_entrenamiento_rf.shp"
+
+# Parámetros AHP y criterios de elegibilidad
+criterios:
+  ghi_min: 160
+  slope_max: 15
+  dist_max: 20000
+  elev_max: 3500
+
+# Parámetros del Modelo de Machine Learning
+ml_params:
+  ratio_negativos: 3
+  random_state: 42
+  n_estimators: 500
