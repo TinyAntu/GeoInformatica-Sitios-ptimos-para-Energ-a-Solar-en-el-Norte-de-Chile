@@ -4,17 +4,20 @@ import joblib
 import pandas as pd
 import optuna
 import geopandas as gpd
+import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score, brier_score_loss
-from sklearn.metrics import brier_score_loss
+from sklearn.metrics import roc_auc_score, brier_score_loss, precision_recall_curve, average_precision_score, roc_curve, auc
 
 
-def optimizar_hiperparametros_optuna(positivas_df, pool_neg_df, features, ratio, random_state, n_trials=30):
+def optimizar_hiperparametros_optuna(positivas_df, pool_neg_df, features, ratio, random_state, optuna_config):
     """
     Ejecuta un estudio de Optuna para encontrar la combinación óptima de hiperparámetros
     que minimiza la pérdida Brier Score.
     """
+
+    n_trials = optuna_config.get('n_trials', 30)
+
     print(f"\n=== INICIANDO OPTIMIZACIÓN CON OPTUNA ({n_trials} INTENTOS) ===")
     
     # 1. Preparar el dataset idéntico al flujo principal
@@ -32,10 +35,16 @@ def optimizar_hiperparametros_optuna(positivas_df, pool_neg_df, features, ratio,
 
     # 2. Definir la función objetivo interna
     def objective(trial):
+
+        # Datos de configuracion
+        cfg_nest = optuna_config.get('n_estimators', {'min': 100, 'max': 1000, 'step': 100})
+        cfg_depth = optuna_config.get('max_depth', {'min': 3, 'max': 15})
+        cfg_leaf = optuna_config.get('min_samples_leaf', {'min': 2, 'max': 10})
+
         # Definimos el espacio de búsqueda para cada hiperparámetro
-        n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
-        max_depth = trial.suggest_int('max_depth', 3, 15)
-        min_samples_leaf = trial.suggest_int('min_samples_leaf', 2, 10)
+        n_estimators = trial.suggest_int('n_estimators', cfg_nest['min'], cfg_nest['max'], step=cfg_nest.get('step', 1))
+        max_depth = trial.suggest_int('max_depth', cfg_depth['min'], cfg_depth['max'])
+        min_samples_leaf = trial.suggest_int('min_samples_leaf', cfg_leaf['min'], cfg_leaf['max'])
         
         # Configuramos el modelo con las sugerencias de este 'trial'
         clf = RandomForestClassifier(
@@ -116,11 +125,75 @@ def _entrenar_y_evaluar(positivas_df, pool_neg_df, features, ratio, n_estimators
     return auc, brier, importances, clf, dataset, y_test, y_probs
 
 
+def _figures_dir() -> str:
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    figures_dir = os.path.join(root_dir, 'figures')
+    os.makedirs(figures_dir, exist_ok=True)
+    return figures_dir
+
+
+def _guardar_importancias(importances: pd.DataFrame, filename: str) -> str:
+    figures_dir = _figures_dir()
+    output_path = os.path.join(figures_dir, filename)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(importances['Criterio'], importances['Peso_ML'], color='#2a7f62')
+    ax.invert_yaxis()
+    ax.set_xlabel('Importancia de Característica')
+    ax.set_title('Importancias de Características del Random Forest')
+    ax.grid(axis='x', linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    return output_path
+
+
+def _guardar_curva_precision_recall(y_test, y_probs, filename: str) -> str:
+    figures_dir = _figures_dir()
+    output_path = os.path.join(figures_dir, filename)
+
+    precision, recall, _ = precision_recall_curve(y_test, y_probs)
+    ap_score = average_precision_score(y_test, y_probs)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(recall, precision, color='#d35400', lw=2)
+    ax.set_xlabel('Recall (Sensibilidad)')
+    ax.set_ylabel('Precision')
+    ax.set_title(f'Curva Precision-Recall (AP = {ap_score:.4f})')
+    ax.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    return output_path
+
+
+def _guardar_curva_roc(y_test, y_probs, filename: str) -> str:
+    figures_dir = _figures_dir()
+    output_path = os.path.join(figures_dir, filename)
+
+    fpr, tpr, _ = roc_curve(y_test, y_probs)
+    roc_auc = auc(fpr, tpr)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(fpr, tpr, color='#1f78b4', lw=2, label=f'AUC = {roc_auc:.4f}')
+    ax.plot([0, 1], [0, 1], color='gray', linestyle='--', lw=1)
+    ax.set_xlabel('False Positive Rate')
+    ax.set_ylabel('True Positive Rate')
+    ax.set_title('Curva ROC')
+    ax.legend(loc='lower right')
+    ax.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    return output_path
+
+
 def entrenar_modelo_rf(
     positivas: gpd.GeoDataFrame,
     pool_negativos: gpd.GeoDataFrame,
     ratio: int,
     out_shp: str,
+    optuna_config: dict,
     random_state: int = 42,
     out_model_path: str | None = None,
     n_estimators: int = 500,
@@ -130,11 +203,11 @@ def entrenar_modelo_rf(
     Entrena el Random Forest con el ratio principal incorporando Brier Score y análisis de sensibilidad.
     """
     # Lista de características unificada
-    features = ['slope', 'ghi', 'elev', 'northness', 'dist_transmision']
+    features = ['slope', 'ghi', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones']
 
     # Optimizacion con OPTUNA
     mejores_params = optimizar_hiperparametros_optuna(
-        positivas, pool_negativos, features, ratio, random_state, n_trials=100
+        positivas, pool_negativos, features, ratio, random_state, optuna_config
     )
     
     # Extraemos los mejores valores encontrados con la optimizacion bayesiana de Optuna. 
@@ -162,6 +235,11 @@ def entrenar_modelo_rf(
     print(f"  Resultado Ratio 1:{ratio} -> AUC: {auc:.4f} | Brier Score: {brier:.4f}")
     print(importances.to_string(index=False))
 
+    feature_path = _guardar_importancias(importances, 'feature_importances_rf.png')
+    pr_path = _guardar_curva_precision_recall(y_test_p, y_probs_p, f'precision_recall_ratio_{ratio}.png')
+    roc_path = _guardar_curva_roc(y_test_p, y_probs_p, f'roc_curve_ratio_{ratio}.png')
+    print(f"\nGráficos guardados en: {feature_path}, {pr_path}, {roc_path}")
+
     if ratio_alt is not None and ratio_alt != ratio:
         print(f"\nAnálisis de sensibilidad con Ratio 1:{ratio_alt}...")
         auc_alt, brier_alt, importances_alt, _, _, y_test_a, y_probs_a = _entrenar_y_evaluar(
@@ -170,6 +248,9 @@ def entrenar_modelo_rf(
         if auc_alt is not None:
             print(f"  Resultado Ratio 1:{ratio_alt} -> AUC: {auc_alt:.4f} | Brier Score: {brier_alt:.4f}")
             print(importances_alt.to_string(index=False))
+            pr_alt_path = _guardar_curva_precision_recall(y_test_a, y_probs_a, f'precision_recall_ratio_{ratio_alt}.png')
+            roc_alt_path = _guardar_curva_roc(y_test_a, y_probs_a, f'roc_curve_ratio_{ratio_alt}.png')
+            print(f"  Gráficos alternativos guardados en: {pr_alt_path}, {roc_alt_path}")
             print(f"\n  Diferencia AUC (ratio {ratio} vs {ratio_alt}): {abs(auc - auc_alt):.4f}")
             if abs(auc - auc_alt) < 0.02:
                 print("  → Modelo robusto al cambio de ratio.")
@@ -183,8 +264,15 @@ def entrenar_modelo_rf(
 
     # Guardar Shapefile con renombrado seguro para evitar truncado de ESRI
     dataset_shp = dataset.copy()
+    shp_rename = {}
     if 'dist_transmision' in dataset_shp.columns:
-        dataset_shp = dataset_shp.rename(columns={'dist_transmision': 'dist_trans'})
+        shp_rename['dist_transmision'] = 'dist_trans'
+    if 'dist_almacen' in dataset_shp.columns:
+        shp_rename['dist_almacen'] = 'dist_almac'
+    if 'dist_subestaciones' in dataset_shp.columns:
+        shp_rename['dist_subestaciones'] = 'dist_subs'
+    if shp_rename:
+        dataset_shp = dataset_shp.rename(columns=shp_rename)
         
     dataset_shp.to_file(out_shp)
     print(f"\nDataset de entrenamiento guardado en: {out_shp}")

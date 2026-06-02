@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 import argparse
 import yaml
@@ -105,6 +105,7 @@ def main():
             pool_negativos=pool_negativos,
             ratio=ml['ratio_negativos'],
             out_shp=dataset_out,
+            optuna_config=config.get('optuna_params', {}),
             random_state=ml['random_state'],
             out_model_path=model_out,
             n_estimators=ml['n_estimators'],

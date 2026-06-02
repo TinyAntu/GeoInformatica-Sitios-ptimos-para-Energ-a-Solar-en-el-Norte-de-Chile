@@ -83,9 +83,33 @@ def generar_dataset_muestras(
         print("\n[ALERTA] La capa de líneas NO tiene una columna 'REGION'. Recortando espacialmente...")
         lineas_norte = gpd.clip(vectores['lineas'], regiones_norte).to_crs(epsg=32718)
 
+    def _clip_spatially(layer, nombre):
+        if layer is None or len(layer) == 0:
+            return gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32718')
+        layer_utm = layer.to_crs(epsg=32718)
+        if 'REGION' in layer_utm.columns:
+            try:
+                return layer_utm[
+                    layer_utm['REGION'].astype(str).str.upper().str.strip().isin(
+                        [str(c).upper().strip() for c in codigos_norte]
+                    )
+                ]
+            except Exception:
+                pass
+        try:
+            return gpd.clip(layer_utm, regiones_norte)
+        except Exception as e:
+            print(f"  [AVISO] No se pudo recortar '{nombre}' espacialmente: {e}. Usando capa completa.")
+            return layer_utm
+
+    almacen_norte = _clip_spatially(vectores.get('almacenamiento', gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32718')), 'almacenamiento')
+    subestaciones_norte = _clip_spatially(vectores.get('subestaciones', gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32718')), 'subestaciones')
+
     # Limpieza estructural de geometrías nulas o vacías
     regiones_norte = regiones_norte[regiones_norte.geometry.notna() & ~regiones_norte.geometry.is_empty]
     lineas_norte = lineas_norte[lineas_norte.geometry.notna() & ~lineas_norte.geometry.is_empty]
+    almacen_norte = almacen_norte[almacen_norte.geometry.notna() & ~almacen_norte.geometry.is_empty]
+    subestaciones_norte = subestaciones_norte[subestaciones_norte.geometry.notna() & ~subestaciones_norte.geometry.is_empty]
 
     fotos_norte = fotos_norte.copy()
     fotos_norte['geometry'] = fotos_norte.geometry.make_valid()
@@ -192,13 +216,27 @@ def generar_dataset_muestras(
     muestras_pre['northness'] = np.cos(np.radians(muestras_pre['aspect']))
 
     # Calcular distancia euclidiana continua para el modelo
-    print("  Calculando distancias euclidianas exactas a la red eléctrica para el modelo...")
+    print("  Calculando distancias euclidianas exactas a la infraestructura para el modelo...")
     if len(lineas_norte) > 0:
         muestras_pre['dist_transmision'] = muestras_pre.geometry.apply(
             lambda g: lineas_norte.geometry.distance(g).min() if g is not None and not g.is_empty else np.nan
         )
     else:
         muestras_pre['dist_transmision'] = 0.0
+
+    if len(almacen_norte) > 0:
+        muestras_pre['dist_almacen'] = muestras_pre.geometry.apply(
+            lambda g: almacen_norte.geometry.distance(g).min() if g is not None and not g.is_empty else np.nan
+        )
+    else:
+        muestras_pre['dist_almacen'] = 0.0
+
+    if len(subestaciones_norte) > 0:
+        muestras_pre['dist_subestaciones'] = muestras_pre.geometry.apply(
+            lambda g: subestaciones_norte.geometry.distance(g).min() if g is not None and not g.is_empty else np.nan
+        )
+    else:
+        muestras_pre['dist_subestaciones'] = 0.0
 
     # 7. Separar clases
     positivas = muestras_pre[muestras_pre['clase'] == 1].copy()
@@ -225,7 +263,7 @@ def generar_dataset_muestras(
     positivas['northness'] = np.cos(np.radians(positivas['aspect']))
 
     # 9. Limpiar negativos y aplicar criterios AHP dinámicos (Agregando dist_transmision a dropna)
-    negativos_pre = negativos_pre.dropna(subset=['ghi', 'slope', 'aspect', 'elev', 'northness', 'dist_transmision'])
+    negativos_pre = negativos_pre.dropna(subset=['ghi', 'slope', 'aspect', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones'])
     print(f"  Negativos tras limpiar NaN: {len(negativos_pre)}")
 
     filtro_ahp = (

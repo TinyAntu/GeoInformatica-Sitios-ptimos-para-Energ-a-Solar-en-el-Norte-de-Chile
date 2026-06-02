@@ -1,0 +1,9 @@
+glob
+numpy
+rasterio
+os
+geopandas
+scikit-learn
+scipy
+torch
+surtgis

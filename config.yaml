@@ -39,3 +39,18 @@ ml_params:
   ratio_alt:       10   # Ratio alternativo para análisis de sensibilidad
   random_state:    42
   n_estimators:    500
+
+# Parametros para Optuna
+optuna_params:
+  n_trials: 50
+  n_estimators:
+    min: 100
+    max: 1000
+    step: 100
+  max_depth:
+    min: 3
+    max: 15
+  min_samples_leaf:
+    min: 2
+    max: 10
+
