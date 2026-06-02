@@ -5,9 +5,12 @@ import joblib
 import numpy as np
 import geopandas as gpd
 import rasterio
+import matplotlib.pyplot as plt
 from rasterio.warp import reproject, Resampling
 from rasterio.features import rasterize
 from scipy.ndimage import distance_transform_edt
+from sklearn.metrics import precision_recall_curve, average_precision_score
+from sklearn.model_selection import train_test_split
 
 # 1. Ajuste de rutas para importar módulos locales
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -49,6 +52,61 @@ def get_rasterized_mask(gdf, dst_shape, dst_transform, fill=0, default_value=1):
         all_touched=True
     )
     return mask
+
+def generar_grafico_precision_recall(paths_results, directorio_raiz, model):
+    """
+    Carga el dataset de entrenamiento, extrae el set de validación (test)
+    y genera/guarda la curva Precision-Recall para evaluar la calibración del modelo.
+    """
+    try:
+        print("\n--- Generando gráfica de curva Precision-Recall para validación ---")
+        # Obtener ruta desde la configuración con un fallback seguro
+        dataset_ml_path = paths_results.get('dataset_ml', 'data/results/dataset_entrenamiento_rf.shp')
+        
+        if not os.path.exists(dataset_ml_path):
+            print(f"  [AVISO] No se encontró el SHP en {dataset_ml_path}. Se omite el gráfico.")
+            return
+
+        df_eval = gpd.read_file(dataset_ml_path)
+        
+        # Ajustar nombre de columna si ESRI truncó el archivo físico a 10 caracteres (.shp)
+        if 'dist_trans' in df_eval.columns:
+            df_eval = df_eval.rename(columns={'dist_trans': 'dist_transmision'})
+            
+        # Matriz de características en el orden estricto de entrenamiento
+        X_eval = df_eval[['slope', 'ghi', 'elev', 'northness', 'dist_transmision']]
+        y_eval = df_eval['clase']
+        
+        # Separar el 30% de validación usando la misma semilla aleatoria (random_state=42)
+        _, X_test_ev, _, y_test_ev = train_test_split(
+            X_eval, y_eval, test_size=0.3, stratify=y_eval, random_state=42
+        )
+        
+        # Calcular probabilidades de la clase positiva (1)
+        y_probs_ev = model.predict_proba(X_test_ev)[:, 1]
+        
+        # Construir la curva y calcular el Average Precision (AP)
+        precision, recall, _ = precision_recall_curve(y_test_ev, y_probs_ev)
+        ap_score = average_precision_score(y_test_ev, y_probs_ev)
+        
+        # Diseño y construcción de la figura con Matplotlib
+        plt.figure(figsize=(7, 5))
+        plt.plot(recall, precision, color='darkorange', lw=2, 
+                 label=f'Curva PR (Average Precision = {ap_score:.4f})')
+        plt.xlabel('Recall (Sensibilidad)')
+        plt.ylabel('Precision (Exactitud de Predicción)')
+        plt.title('Curva Precision-Recall - Modelo de Aptitud Solar')
+        plt.legend(loc="lower left")
+        plt.grid(True, linestyle='--', alpha=0.6)
+        
+        # Guardar la imagen en alta resolución
+        plot_output_path = os.path.join(directorio_raiz, 'data/results/curva_precision_recall.png')
+        plt.savefig(plot_output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"  [ÉXITO] Gráfica PR guardada en: {plot_output_path}\n")
+            
+    except Exception as e:
+        print(f"  [AVISO] No se pudo generar la gráfica PR automáticamente: {e}")
 
 def main():
     print("=== INICIANDO GENERACIÓN DE MAPA DE APTITUD SOLAR ===")
@@ -103,6 +161,11 @@ def main():
     slope_data = read_and_reproject_to_grid(slope_path, crs, grid_shape, transform, nodata_val=np.nan)
     aspect_data = read_and_reproject_to_grid(aspect_path, crs, grid_shape, transform, nodata_val=np.nan)
 
+    # CORRECCIÓN 1: Transformación lineal de variable circular 'aspect' a 'northness' en las matrices
+    print("  Transformando variable matricial 'aspect' a 'northness'...")
+    with np.errstate(invalid='ignore'):
+        northness_data = np.cos(np.radians(aspect_data))
+
     # 4. Calcular distancia a líneas de transmisión
     lineas_path = paths_raw['vectores']['lineas']
     print(f"Cargando líneas de transmisión desde: {lineas_path}")
@@ -134,7 +197,7 @@ def main():
         ghi_mask_valid &
         (~np.isnan(elev_data)) &
         (~np.isnan(slope_data)) &
-        (~np.isnan(aspect_data)) &
+        (~np.isnan(northness_data)) &  # Cambiado aspect_data por northness_data
         (~np.isnan(dist_transmision_data))
     )
 
@@ -146,15 +209,15 @@ def main():
         return
 
     # Extraer valores y aplanar para alimentar al modelo
-    ghi_flat = ghi_data[valid_mask]
     slope_flat = slope_data[valid_mask]
-    aspect_flat = aspect_data[valid_mask]
-    dist_flat = dist_transmision_data[valid_mask]
+    ghi_flat = ghi_data[valid_mask]
     elev_flat = elev_data[valid_mask]
+    northness_flat = northness_data[valid_mask]
+    dist_flat = dist_transmision_data[valid_mask]
 
-    # Crear la matriz de características (Features) en el mismo orden que el entrenamiento
-    # features = ['ghi', 'slope', 'aspect', 'dist_transmision', 'elev']
-    X_pred = np.column_stack((ghi_flat, slope_flat, aspect_flat, dist_flat, elev_flat))
+    # CORRECCIÓN 2: Firma de orden de entrada estricta del modelo
+    # features = ['slope', 'ghi', 'elev', 'northness', 'dist_transmision']
+    X_pred = np.column_stack((slope_flat, ghi_flat, elev_flat, northness_flat, dist_flat))
 
     # 7. Ejecutar predicciones de probabilidad
     print("Prediciendo probabilidades de aptitud solar con Random Forest...")
@@ -184,13 +247,16 @@ def main():
             # Todo píxel en zona de exclusión y que sea válido se fuerza a 0.0
             suitability_grid[(mask_excl == 1) & (suitability_grid != -9999.0)] = 0.0
 
-    # 9. Guardar mapa en formato GeoTIFF
+    # 9. Grafico de validación adicional: Curva Precision-Recall para evaluar el desempeño del modelo en el dataset de entrenamiento
+    generar_grafico_precision_recall(paths_results, directorio_raiz, model)
+
+    # 10. Guardar mapa en formato GeoTIFF
     meta_base.update(
         dtype=rasterio.float32,
         nodata=-9999.0,
         count=1
     )
-
+    
     print(f"Guardando raster de aptitud en: {output_tif_path}")
     with rasterio.open(output_tif_path, 'w', **meta_base) as dst:
         dst.write(suitability_grid, 1)
