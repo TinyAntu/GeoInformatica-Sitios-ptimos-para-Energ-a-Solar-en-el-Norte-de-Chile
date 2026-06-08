@@ -18,8 +18,8 @@ paths:
       masas_lacustres: "data/raw/Masas_Lacustres/masas_lacustres.shp"
       snap:            "data/raw/SNAP_ Mayo 2026/SNAP_.shp"
   processed:
-    ghi_32718: "data/processed/GHI_32718.tif"
-    dem_32718: "data/processed/dem_norte_32718.tif"
+    ghi_32719: "data/processed/GHI_32719.tif"
+    dem_32719: "data/processed/dem_norte_32719.tif"
     slope:     "data/processed/slope_norte.tif"
     aspect:    "data/processed/aspect_norte.tif"
   results:
@@ -32,6 +32,10 @@ criterios:
   slope_max: 15
   dist_max:  20000
   elev_max:  3500
+
+# Parámetros de validación espacial (SBCV / LOROCV)
+validacion:
+  tamano_bloque_km: 30   # Lado del bloque cuadrado para Spatial Block CV (en km)
 
 # Parámetros del Modelo de Machine Learning
 ml_params:

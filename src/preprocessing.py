@@ -59,9 +59,9 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
         dem_geo = dem_geo[0].astype('float64')
         dem_geo = np.where(dem_geo == nodata_value, np.nan, dem_geo)
 
-        # Paso 2: reproyectar a UTM EPSG:32718 en memoria
-        print("Reproyectando DEM fusionado a UTM EPSG:32718...")
-        dst_crs = rasterio.crs.CRS.from_epsg(32718)
+        # Paso 2: reproyectar a UTM EPSG:32719 en memoria
+        print("Reproyectando DEM fusionado a UTM EPSG:32719...")
+        dst_crs = rasterio.crs.CRS.from_epsg(32719)
         h, w = dem_geo.shape
         bounds = rasterio.transform.array_bounds(h, w, transform_geo)
         dst_transform, dst_width, dst_height = calculate_default_transform(
@@ -137,7 +137,7 @@ def cargar_capas_vectoriales(diccionario_rutas: dict) -> dict:
     return capas
 
 
-def reproject_raster_to_utm(src_path: str, dst_path: str, epsg_code: int = 32718) -> None:
+def reproject_raster_to_utm(src_path: str, dst_path: str, epsg_code: int = 32719) -> None:
     """Reproyecta un raster al EPSG indicado. No hace nada si el archivo de salida ya existe."""
     if os.path.exists(dst_path):
         print(f"Raster ya existe en procesados, se omite: {dst_path}")

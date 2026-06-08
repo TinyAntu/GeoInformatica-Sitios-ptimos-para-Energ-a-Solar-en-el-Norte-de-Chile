@@ -5,6 +5,8 @@ import joblib
 import numpy as np
 import geopandas as gpd
 import rasterio
+import matplotlib
+matplotlib.use('Agg')  # Backend no interactivo: solo guardamos figuras, evita el crash de Tkinter en hilos
 import matplotlib.pyplot as plt
 from rasterio.warp import reproject, Resampling
 from rasterio.features import rasterize
@@ -53,6 +55,26 @@ def get_rasterized_mask(gdf, dst_shape, dst_transform, fill=0, default_value=1):
     )
     return mask
 
+def calcular_distancia_a_capa(path, crs, grid_shape, transform, pixel_size_meters, nombre=""):
+    """Carga una capa vectorial, la rasteriza sobre la grilla base y devuelve la distancia
+    euclidiana (en metros) de cada píxel a la geometría más cercana de esa capa."""
+    etiqueta = nombre or os.path.basename(path)
+    print(f"  Cargando y calculando distancia euclidiana a {etiqueta}...")
+    gdf = gpd.read_file(path).to_crs(crs)
+    mask = get_rasterized_mask(gdf, grid_shape, transform, fill=0, default_value=1)
+
+    if mask.max() == 0:
+        # La capa no aportó geometrías válidas dentro de la grilla.
+        print(f"  [AVISO] '{etiqueta}' no rasterizó ninguna geometría; se usa distancia = 0.0.")
+        return np.zeros(grid_shape, dtype=np.float32)
+
+    # distance_transform_edt mide la distancia a los píxeles con valor 0, por eso invertimos el mask.
+    inverted = (mask == 0).astype(np.uint8)
+    dist_pixels = distance_transform_edt(inverted)
+    dist_metros = (dist_pixels * pixel_size_meters).astype(np.float32)
+    print(f"  Distancia máxima a {etiqueta}: {dist_metros.max():.2f} metros")
+    return dist_metros
+
 def generar_grafico_precision_recall(paths_results, directorio_raiz, model):
     """
     Carga el dataset de entrenamiento, extrae el set de validación (test)
@@ -69,12 +91,16 @@ def generar_grafico_precision_recall(paths_results, directorio_raiz, model):
 
         df_eval = gpd.read_file(dataset_ml_path)
         
-        # Ajustar nombre de columna si ESRI truncó el archivo físico a 10 caracteres (.shp)
-        if 'dist_trans' in df_eval.columns:
-            df_eval = df_eval.rename(columns={'dist_trans': 'dist_transmision'})
-            
+        # Ajustar nombres de columna si ESRI truncó el archivo físico a 10 caracteres (.shp)
+        rename_map = {
+            'dist_trans': 'dist_transmision',
+            'dist_almac': 'dist_almacen',
+            'dist_subs':  'dist_subestaciones',
+        }
+        df_eval = df_eval.rename(columns={k: v for k, v in rename_map.items() if k in df_eval.columns})
+
         # Matriz de características en el orden estricto de entrenamiento
-        X_eval = df_eval[['slope', 'ghi', 'elev', 'northness', 'dist_transmision']]
+        X_eval = df_eval[['slope', 'ghi', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones']]
         y_eval = df_eval['clase']
         
         # Separar el 30% de validación usando la misma semilla aleatoria (random_state=42)
@@ -133,7 +159,7 @@ def main():
     model = joblib.load(model_path)
 
     # 2. Abrir el raster GHI como base de referencia
-    ghi_path = paths_processed['ghi_32718']
+    ghi_path = paths_processed['ghi_32719']
     print(f"Usando como grilla de referencia: {ghi_path}")
     
     with rasterio.open(ghi_path) as ghi_src:
@@ -153,7 +179,7 @@ def main():
     print(f"Dimensiones de la grilla de trabajo: {grid_shape}")
 
     # 3. Cargar y reproyectar variables raster
-    dem_path = paths_processed['dem_32718']
+    dem_path = paths_processed['dem_32719']
     slope_path = paths_processed['slope']
     aspect_path = paths_processed['aspect']
 
@@ -161,27 +187,27 @@ def main():
     slope_data = read_and_reproject_to_grid(slope_path, crs, grid_shape, transform, nodata_val=np.nan)
     aspect_data = read_and_reproject_to_grid(aspect_path, crs, grid_shape, transform, nodata_val=np.nan)
 
-    # CORRECCIÓN 1: Transformación lineal de variable circular 'aspect' a 'northness' en las matrices
+    # Transformación lineal de variable circular 'aspect' a 'northness' en las matrices
     print("  Transformando variable matricial 'aspect' a 'northness'...")
     with np.errstate(invalid='ignore'):
         northness_data = np.cos(np.radians(aspect_data))
 
-    # 4. Calcular distancia a líneas de transmisión
-    lineas_path = paths_raw['vectores']['lineas']
-    print(f"Cargando líneas de transmisión desde: {lineas_path}")
-    lineas_gdf = gpd.read_file(lineas_path).to_crs(crs)
-    
-    print("  Rasterizando líneas de transmisión y calculando distancia euclidiana...")
-    lineas_mask = get_rasterized_mask(lineas_gdf, grid_shape, transform, fill=0, default_value=1)
-    
-    # distance_transform_edt calcula la distancia a los píxeles con valor 0. Invertimos el mask.
-    lines_inverted = (lineas_mask == 0).astype(np.uint8)
-    dist_pixels = distance_transform_edt(lines_inverted)
-    
-    # Convertir distancias de píxeles a metros (el transform[0] nos da el ancho del píxel en metros)
+    # 4. Calcular distancias euclidianas a la infraestructura (mismas 3 que usa el modelo)
+    # El transform[0] da el ancho del píxel en metros para convertir distancias a unidades reales.
     pixel_size_meters = transform[0]
-    dist_transmision_data = dist_pixels * pixel_size_meters
-    print(f"  Distancia máxima calculada a líneas de transmisión: {dist_transmision_data.max():.2f} metros")
+    print("Calculando distancias a infraestructura de red...")
+
+    dist_transmision_data = calcular_distancia_a_capa(
+        paths_raw['vectores']['lineas'], crs, grid_shape, transform,
+        pixel_size_meters, nombre="líneas de transmisión")
+    
+    dist_almacen_data = calcular_distancia_a_capa(
+        paths_raw['vectores']['almacenamiento'], crs, grid_shape, transform,
+        pixel_size_meters, nombre="almacenamiento de energía")
+    
+    dist_subestaciones_data = calcular_distancia_a_capa(
+        paths_raw['vectores']['subestaciones'], crs, grid_shape, transform,
+        pixel_size_meters, nombre="subestaciones")
 
     # 5. Generar Máscara de Regiones (Antofagasta y Atacama)
     regiones_path = paths_raw['vectores']['regiones']
@@ -197,8 +223,10 @@ def main():
         ghi_mask_valid &
         (~np.isnan(elev_data)) &
         (~np.isnan(slope_data)) &
-        (~np.isnan(northness_data)) &  # Cambiado aspect_data por northness_data
-        (~np.isnan(dist_transmision_data))
+        (~np.isnan(northness_data)) &
+        (~np.isnan(dist_transmision_data)) &
+        (~np.isnan(dist_almacen_data)) &
+        (~np.isnan(dist_subestaciones_data))
     )
 
     n_valid_pixels = np.sum(valid_mask)
@@ -213,11 +241,16 @@ def main():
     ghi_flat = ghi_data[valid_mask]
     elev_flat = elev_data[valid_mask]
     northness_flat = northness_data[valid_mask]
-    dist_flat = dist_transmision_data[valid_mask]
+    dist_trans_flat = dist_transmision_data[valid_mask]
+    dist_almacen_flat = dist_almacen_data[valid_mask]
+    dist_subestaciones_flat = dist_subestaciones_data[valid_mask]
 
-    # CORRECCIÓN 2: Firma de orden de entrada estricta del modelo
-    # features = ['slope', 'ghi', 'elev', 'northness', 'dist_transmision']
-    X_pred = np.column_stack((slope_flat, ghi_flat, elev_flat, northness_flat, dist_flat))
+    # Firma de orden de entrada estricta del modelo 
+    X_pred = np.column_stack((
+        slope_flat, ghi_flat, elev_flat, northness_flat,
+        dist_trans_flat, dist_almacen_flat, 
+        dist_subestaciones_flat,
+    ))
 
     # 7. Ejecutar predicciones de probabilidad
     print("Prediciendo probabilidades de aptitud solar con Random Forest...")

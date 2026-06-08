@@ -11,7 +11,7 @@ from src.preprocessing import cargar_capas_vectoriales, procesar_dem, reproject_
 from src.sampling import generar_dataset_muestras
 from src.modeling import entrenar_modelo_rf
 from src.utils import _esta_actualizado
-
+from scripts.run_spatial_validation import main as run_spatial_validation
 
 def _resolver_rutas(obj, base_dir: str):
     """Convierte recursivamente todas las rutas relativas del config a absolutas."""
@@ -51,10 +51,10 @@ def main():
     processed = config['paths']['processed']
     results = config['paths']['results']
 
-    dem_out    = processed['dem_32718']
+    dem_out    = processed['dem_32719']
     slope_out  = processed['slope']
     aspect_out = processed['aspect']
-    ghi_utm_out = processed['ghi_32718']
+    ghi_utm_out = processed['ghi_32719']
 
     # --- Etapa 1: DEM ---
     # procesar_dem() omite el proceso si los archivos ya existen en procesados.
@@ -68,7 +68,7 @@ def main():
     # --- Etapa 2: Reproyección GHI ---
     # reproject_raster_to_utm() omite el proceso si el archivo ya existe en procesados.
     raw_ghi = config['paths']['raw']['rasters']['ghi']
-    reproject_raster_to_utm(raw_ghi, ghi_utm_out, epsg_code=32718)
+    reproject_raster_to_utm(raw_ghi, ghi_utm_out, epsg_code=32719)
 
     # --- Etapa 3: Muestreo y entrenamiento ---
     dataset_out = results['dataset_ml']
@@ -88,10 +88,10 @@ def main():
             os.makedirs(os.path.dirname(model_out), exist_ok=True)
 
         rutas_rasters = {
-            'ghi_32718':  ghi_utm_out,
+            'ghi_32719':  ghi_utm_out,
             'slope':      slope_out,
             'aspect':     aspect_out,
-            'dem_32718':  dem_out,
+            'dem_32719':  dem_out,
         }
 
         ml = config['ml_params']
@@ -110,7 +110,12 @@ def main():
             out_model_path=model_out,
             n_estimators=ml['n_estimators'],
             ratio_alt=ml.get('ratio_alt'),
+            tamano_bloque_km=config.get('validacion', {}).get('tamano_bloque_km', 15),
         )
+
+    # Ejecutamos la validacion espacial propuesta
+    print("Ejecutando validación espacial...")
+    run_spatial_validation()
 
     print("Pipeline ejecutado correctamente.")
 

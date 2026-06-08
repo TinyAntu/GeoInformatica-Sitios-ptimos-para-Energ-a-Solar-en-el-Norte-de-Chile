@@ -4,82 +4,44 @@ import joblib
 import pandas as pd
 import optuna
 import geopandas as gpd
+import matplotlib
+matplotlib.use('Agg')  # Backend no interactivo: solo guardamos figuras, evita el crash de Tkinter en hilos
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, brier_score_loss, precision_recall_curve, average_precision_score, roc_curve, auc
+from src.spatial_validation import asignar_region_a_muestras, asignar_bloques_espaciales, make_objective_spatial
 
 
-def optimizar_hiperparametros_optuna(positivas_df, pool_neg_df, features, ratio, random_state, optuna_config):
-    """
-    Ejecuta un estudio de Optuna para encontrar la combinación óptima de hiperparámetros
-    que minimiza la pérdida Brier Score.
-    """
-
+def optimizar_hiperparametros_optuna(positivas_df, pool_neg_df, features, ratio,
+                                     random_state, optuna_config,
+                                     regiones_gdf=None, tamano_bloque_km=15):
     n_trials = optuna_config.get('n_trials', 30)
+    print(f"\n=== OPTIMIZACIÓN OPTUNA SOBRE SBCV ({n_trials} TRIALS) ===")
 
-    print(f"\n=== INICIANDO OPTIMIZACIÓN CON OPTUNA ({n_trials} INTENTOS) ===")
-    
-    # 1. Preparar el dataset idéntico al flujo principal
+    # 1. Construir el dataset idéntico al flujo principal
     n_sample = min(int(len(positivas_df) * ratio), len(pool_neg_df))
     neg_sample = pool_neg_df.sample(n=n_sample, random_state=random_state)
     dataset = gpd.GeoDataFrame(
         pd.concat([positivas_df, neg_sample], ignore_index=True),
-        geometry='geometry', crs='EPSG:32718',
+        geometry='geometry', crs='EPSG:32719',
     ).dropna(subset=features)
-    
-    X, y = dataset[features], dataset['clase']
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, stratify=y, random_state=random_state
-    )
 
-    # 2. Definir la función objetivo interna
-    def objective(trial):
+    # 2. Asignar REGION y bloques espaciales (la grilla CV consciente)
+    if regiones_gdf is not None:
+        dataset = asignar_region_a_muestras(dataset, regiones_gdf)
+    dataset = asignar_bloques_espaciales(dataset, tamano_bloque_m=tamano_bloque_km * 1000)
 
-        # Datos de configuracion
-        cfg_nest = optuna_config.get('n_estimators', {'min': 100, 'max': 1000, 'step': 100})
-        cfg_depth = optuna_config.get('max_depth', {'min': 3, 'max': 15})
-        cfg_leaf = optuna_config.get('min_samples_leaf', {'min': 2, 'max': 10})
+    # 3. Objective basado en SBCV 
+    objective = make_objective_spatial(dataset, features, optuna_config, random_state)
 
-        # Definimos el espacio de búsqueda para cada hiperparámetro
-        n_estimators = trial.suggest_int('n_estimators', cfg_nest['min'], cfg_nest['max'], step=cfg_nest.get('step', 1))
-        max_depth = trial.suggest_int('max_depth', cfg_depth['min'], cfg_depth['max'])
-        min_samples_leaf = trial.suggest_int('min_samples_leaf', cfg_leaf['min'], cfg_leaf['max'])
-        
-        # Configuramos el modelo con las sugerencias de este 'trial'
-        clf = RandomForestClassifier(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf,
-            n_jobs=-1,
-            random_state=random_state,
-            class_weight='balanced'
-        )
-        
-        # Entrenar
-        clf.fit(X_train, y_train)
-        
-        # Calcular la pérdida (Brier Score) en el set de TEST/VALIDACIÓN
-        y_probs = clf.predict_proba(X_test)[:, 1]
-        brier_pérdida = brier_score_loss(y_test, y_probs)
-        
-        # Retornamos la pérdida objetiva (Optuna intentará que sea lo más cercana a 0)
-        return brier_pérdida
-
-    # 3. Crear el estudio de Optuna
-    # Buscamos 'minimize' porque el Brier Score es una métrica de pérdida (menor es mejor)
     study = optuna.create_study(direction='minimize')
-    
-    # Ejecutar la optimización ocultando el texto invasivo por cada intento
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
-    
-    print("\n=== OPTIMIZACIÓN FINALIZADA ===")
-    print(f"Mejor pérdida lograda (Brier Score): {study.best_value:.4f}")
-    print("Mejores Hiperparámetros encontrados:")
-    for key, value in study.best_params.items():
-        print(f"  -> {key}: {value}")
-        
+
+    print(f"\nMejor Brier promedio (5-fold espacial): {study.best_value:.4f}")
+    for k, v in study.best_params.items():
+        print(f"  -> {k}: {v}")
     return study.best_params
 
 
@@ -91,7 +53,7 @@ def _entrenar_y_evaluar(positivas_df, pool_neg_df, features, ratio, n_estimators
     neg_sample = pool_neg_df.sample(n=n_sample, random_state=random_state)
     dataset = gpd.GeoDataFrame(
         pd.concat([positivas_df, neg_sample], ignore_index=True),
-        geometry='geometry', crs='EPSG:32718',
+        geometry='geometry', crs='EPSG:32719',
     ).dropna(subset=features)
     if len(dataset) == 0:
         return None, None, None, None, None, None, None
@@ -198,16 +160,25 @@ def entrenar_modelo_rf(
     out_model_path: str | None = None,
     n_estimators: int = 500,
     ratio_alt: int | None = None,
+    tamano_bloque_km: float = 15,
 ) -> dict:
     """
     Entrena el Random Forest con el ratio principal incorporando Brier Score y análisis de sensibilidad.
     """
     # Lista de características unificada
     features = ['slope', 'ghi', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones']
+    #features = ['slope', 'ghi', 'elev', 'northness', 'dist_subestaciones']
+
+    # Mostrar matriz de correlación antes de la optimización para entender relaciones entre características
+    muestras = pd.concat([positivas, pool_negativos.sample(n=min(int(len(positivas) * ratio), len(pool_negativos)), random_state=random_state)], ignore_index=True)
+    corr = muestras[features].corr(method='spearman')
+    print("\nMatriz de Correlación de Características (Spearman):")
+    print(corr.to_string(float_format=lambda x: f"{x:.2f}"))
 
     # Optimizacion con OPTUNA
     mejores_params = optimizar_hiperparametros_optuna(
-        positivas, pool_negativos, features, ratio, random_state, optuna_config
+        positivas, pool_negativos, features, ratio, random_state, optuna_config,
+        tamano_bloque_km=tamano_bloque_km,
     )
     
     # Extraemos los mejores valores encontrados con la optimizacion bayesiana de Optuna. 

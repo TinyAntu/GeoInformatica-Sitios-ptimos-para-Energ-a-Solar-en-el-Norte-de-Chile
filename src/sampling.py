@@ -65,28 +65,28 @@ def generar_dataset_muestras(
     
     regiones_norte = vectores['regiones'][
         vectores['regiones']['REGION'].isin(['Antofagasta', 'Atacama'])
-    ].to_crs(epsg=32718)
+    ].to_crs(epsg=32719)
     
     fotos_norte = vectores['fotovoltaicas'][
         vectores['fotovoltaicas']['REGION'].astype(str).str.upper().str.strip().isin(
             [str(c).upper().strip() for c in codigos_norte]
         )
-    ].to_crs(epsg=32718)
+    ].to_crs(epsg=32719)
     
     if 'REGION' in vectores['lineas'].columns:
         lineas_norte = vectores['lineas'][
             vectores['lineas']['REGION'].astype(str).str.upper().str.strip().isin(
                 [str(c).upper().strip() for c in codigos_norte]
             )
-        ].to_crs(epsg=32718)
+        ].to_crs(epsg=32719)
     else:
         print("\n[ALERTA] La capa de líneas NO tiene una columna 'REGION'. Recortando espacialmente...")
-        lineas_norte = gpd.clip(vectores['lineas'], regiones_norte).to_crs(epsg=32718)
+        lineas_norte = gpd.clip(vectores['lineas'], regiones_norte).to_crs(epsg=32719)
 
     def _clip_spatially(layer, nombre):
         if layer is None or len(layer) == 0:
-            return gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32718')
-        layer_utm = layer.to_crs(epsg=32718)
+            return gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32719')
+        layer_utm = layer.to_crs(epsg=32719)
         if 'REGION' in layer_utm.columns:
             try:
                 return layer_utm[
@@ -102,8 +102,8 @@ def generar_dataset_muestras(
             print(f"  [AVISO] No se pudo recortar '{nombre}' espacialmente: {e}. Usando capa completa.")
             return layer_utm
 
-    almacen_norte = _clip_spatially(vectores.get('almacenamiento', gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32718')), 'almacenamiento')
-    subestaciones_norte = _clip_spatially(vectores.get('subestaciones', gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32718')), 'subestaciones')
+    almacen_norte = _clip_spatially(vectores.get('almacenamiento', gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32719')), 'almacenamiento')
+    subestaciones_norte = _clip_spatially(vectores.get('subestaciones', gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:32719')), 'subestaciones')
 
     # Limpieza estructural de geometrías nulas o vacías
     regiones_norte = regiones_norte[regiones_norte.geometry.notna() & ~regiones_norte.geometry.is_empty]
@@ -124,7 +124,7 @@ def generar_dataset_muestras(
     positivas = gpd.GeoDataFrame(
         {'id_muestra': range(len(fotos_norte)), 'clase': 1},
         geometry=fotos_norte.geometry.centroid,
-        crs='EPSG:32718',
+        crs='EPSG:32719',
     )
     # Filtro de seguridad extremo: asegurar que no existan coordenadas NaN en los centroides
     positivas = positivas[positivas.geometry.apply(lambda g: not (np.isnan(g.x) or np.isnan(g.y)) if g is not None else False)]
@@ -146,10 +146,14 @@ def generar_dataset_muestras(
         y = rng.uniform(bounds[1], bounds[3])
         pto = Point(x, y)
         
-        if regiones_norte.contains(pto).any() and pto.intersects(buffer_lineas):
+        # CAMBIO DEBIDO A SESGO
+        #if regiones_norte.contains(pto).any() and pto.intersects(buffer_lineas):
+        #    puntos_random.append(pto)
+
+        if regiones_norte.contains(pto).any():
             puntos_random.append(pto)
 
-    candidatos_neg = gpd.GeoDataFrame(geometry=puntos_random, crs='EPSG:32718')
+    candidatos_neg = gpd.GeoDataFrame(geometry=puntos_random, crs='EPSG:32719')
     print(f"  Se generaron {len(candidatos_neg)} candidatos iniciales en el buffer.")
 
     # 4. Exclusión: buffer alrededor de plantas existentes
@@ -162,7 +166,7 @@ def generar_dataset_muestras(
     for clave in claves_exclusion:
         if clave not in vectores or len(vectores[clave]) == 0:
             continue
-        capa = vectores[clave].to_crs(epsg=32718)
+        capa = vectores[clave].to_crs(epsg=32719)
         try:
             capa = gpd.clip(capa, regiones_norte)
         except Exception as e:
@@ -180,7 +184,7 @@ def generar_dataset_muestras(
 
     # 5. Muestreo de control de GHI (Sin Hard Mining Sesgado)
     print(f"  Extrayendo GHI de {len(candidatos_neg)} candidatos negativos...")
-    candidatos_neg = extraer_valores_puntos(candidatos_neg, rutas_rasters['ghi_32718'], 'ghi')
+    candidatos_neg = extraer_valores_puntos(candidatos_neg, rutas_rasters['ghi_32719'], 'ghi')
     candidatos_neg = candidatos_neg.dropna(subset=['ghi'])
     print(f"  Candidatos tras limpiar GHI NaN: {len(candidatos_neg)}")
 
@@ -204,12 +208,12 @@ def generar_dataset_muestras(
             ignore_index=True,
         ),
         geometry='geometry',
-        crs='EPSG:32718',
+        crs='EPSG:32719',
     )
 
     muestras_pre = extraer_valores_puntos(muestras_pre, rutas_rasters['slope'], 'slope')
     muestras_pre = extraer_valores_puntos(muestras_pre, rutas_rasters['aspect'], 'aspect')
-    muestras_pre = extraer_valores_puntos(muestras_pre, rutas_rasters['dem_32718'], 'elev')
+    muestras_pre = extraer_valores_puntos(muestras_pre, rutas_rasters['dem_32719'], 'elev')
 
     # Convertir variable circular 'aspect' a 'northness' (Coseno en Radianes)
     print("  Transformando variable circular 'aspect' a 'northness'...")
@@ -246,10 +250,10 @@ def generar_dataset_muestras(
     # 8. Rellenar NaN en positivas
     print("  Rellenando NaN en positivas...")
     for col, raster_path in [
-        ('ghi',    rutas_rasters['ghi_32718']),
+        ('ghi',    rutas_rasters['ghi_32719']),
         ('slope',  rutas_rasters['slope']),
         ('aspect', rutas_rasters['aspect']),
-        ('elev',   rutas_rasters['dem_32718']),
+        ('elev',   rutas_rasters['dem_32719']),
     ]:
         positivas = fill_missing_from_raster(positivas, raster_path, col)
         if positivas[col].isna().any():
