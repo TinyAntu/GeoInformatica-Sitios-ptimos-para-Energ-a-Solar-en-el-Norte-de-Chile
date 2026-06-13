@@ -58,3 +58,21 @@ optuna_params:
     min: 2
     max: 10
 
+# El perfil 'balanceado' se carga dinámicamente desde los resultados del modelo ML
+perfiles_inversion:
+  conservador:
+    ghi: 0.10
+    dist_transmision: 0.40
+    dist_almacen: 0.15
+    dist_subestaciones: 0.15
+    slope: 0.10
+    elev: 0.10
+    northness: 0.00
+  agresivo:
+    ghi: 0.60
+    dist_transmision: 0.10
+    dist_almacen: 0.05
+    dist_subestaciones: 0.05
+    slope: 0.10
+    elev: 0.10
+    northness: 0.00
