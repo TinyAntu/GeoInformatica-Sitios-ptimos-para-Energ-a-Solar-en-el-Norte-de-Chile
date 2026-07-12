@@ -10,6 +10,7 @@ matplotlib.use('Agg')  # Backend no interactivo: solo guardamos figuras, evita e
 import matplotlib.pyplot as plt
 from rasterio.warp import reproject, Resampling
 from rasterio.features import rasterize
+from rasterio.transform import from_origin
 from scipy.ndimage import distance_transform_edt
 from sklearn.metrics import precision_recall_curve, average_precision_score
 from sklearn.model_selection import train_test_split
@@ -18,8 +19,16 @@ from sklearn.model_selection import train_test_split
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
-def read_and_reproject_to_grid(src_path, dst_crs, dst_shape, dst_transform, nodata_val=np.nan):
-    """Reproyecta un raster en memoria para que coincida con la grilla base."""
+from src.features import FEATURES  # orden canónico de features (ver src/features.py)
+
+def read_and_reproject_to_grid(src_path, dst_crs, dst_shape, dst_transform, nodata_val=np.nan,
+                               resampling=Resampling.bilinear):
+    """Reproyecta un raster en memoria para que coincida con la grilla base.
+
+    `resampling` es bilinear por defecto (variables continuas), pero debe ser
+    Resampling.nearest para variables que NO se pueden interpolar linealmente
+    (p. ej. 'aspect', que es circular: promediar 359° y 1° daría ~180°).
+    """
     print(f"  Reproyectando {os.path.basename(src_path)} a la grilla base...")
     with rasterio.open(src_path) as src:
         destination = np.empty(dst_shape, dtype=np.float32)
@@ -30,11 +39,33 @@ def read_and_reproject_to_grid(src_path, dst_crs, dst_shape, dst_transform, noda
             src_crs=src.crs,
             dst_transform=dst_transform,
             dst_crs=dst_crs,
-            resampling=Resampling.bilinear,
+            resampling=resampling,
             src_nodata=src.nodata,
             dst_nodata=nodata_val
         )
         return destination
+
+def construir_grilla_referencia(dem_path, resolucion_m=None):
+    """Grilla de inferencia del mapa de aptitud (hallazgo 2.1, opción B).
+
+    Se usa el DEM como base (resolución fina, ~30 m) en vez del GHI (~1 km), para que
+    las distancias euclidianas calculadas en inferencia se acerquen a las distancias
+    exactas por vector usadas en el entrenamiento (src/sampling.py).
+
+    Si `resolucion_m` es None se usa la grilla nativa del DEM; si se especifica, se
+    reconstruye la grilla a esa resolución sobre la misma extensión (permite bajar la
+    resolución si falta memoria). Devuelve (crs, transform, width, height).
+    """
+    with rasterio.open(dem_path) as src:
+        crs = src.crs
+        if resolucion_m is None:
+            return crs, src.transform, src.width, src.height
+        bounds = src.bounds
+    width = max(1, int(round((bounds.right - bounds.left) / resolucion_m)))
+    height = max(1, int(round((bounds.top - bounds.bottom) / resolucion_m)))
+    transform = from_origin(bounds.left, bounds.top, resolucion_m, resolucion_m)
+    return crs, transform, width, height
+
 
 def get_rasterized_mask(gdf, dst_shape, dst_transform, fill=0, default_value=1):
     """Rasteriza geometrías vectoriales sobre la grilla base."""
@@ -100,7 +131,7 @@ def generar_grafico_precision_recall(paths_results, directorio_raiz, model):
         df_eval = df_eval.rename(columns={k: v for k, v in rename_map.items() if k in df_eval.columns})
 
         # Matriz de características en el orden estricto de entrenamiento
-        X_eval = df_eval[['slope', 'ghi', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones']]
+        X_eval = df_eval[FEATURES]
         y_eval = df_eval['clase']
         
         # Separar el 30% de validación usando la misma semilla aleatoria (random_state=42)
@@ -158,36 +189,45 @@ def main():
     print(f"Cargando modelo Random Forest desde: {model_path}")
     model = joblib.load(model_path)
 
-    # 2. Abrir el raster GHI como base de referencia
-    ghi_path = paths_processed['ghi_32719']
-    print(f"Usando como grilla de referencia: {ghi_path}")
-    
-    with rasterio.open(ghi_path) as ghi_src:
-        meta_base = ghi_src.meta.copy()
-        transform = ghi_src.transform
-        width = ghi_src.width
-        height = ghi_src.height
-        crs = ghi_src.crs
-        
-        # Leer radiación cruda
-        ghi_data = ghi_src.read(1)
-        # Nodata en el GHI base
-        nodata_ghi = ghi_src.nodata if ghi_src.nodata is not None else -9999.0
-        ghi_mask_valid = (ghi_data != nodata_ghi) & (~np.isnan(ghi_data))
-
-    grid_shape = (height, width)
-    print(f"Dimensiones de la grilla de trabajo: {grid_shape}")
-
-    # 3. Cargar y reproyectar variables raster
+    # 2. Grilla de referencia = DEM (resolución fina), NO el GHI (~1 km).
+    #    Así las distancias euclidianas de inferencia dejan de estar cuantizadas a ~1 km y
+    #    se acercan a las distancias exactas del entrenamiento (hallazgo 2.1, opción B).
     dem_path = paths_processed['dem_32719']
     slope_path = paths_processed['slope']
     aspect_path = paths_processed['aspect']
+    ghi_path = paths_processed['ghi_32719']
+
+    resolucion_m = config.get('salida_mapa', {}).get('resolucion_m')
+    crs, transform, width, height = construir_grilla_referencia(dem_path, resolucion_m)
+    grid_shape = (height, width)
+    n_pix = width * height
+    print(f"Grilla de inferencia (base DEM): {width}x{height} = {n_pix:,} píxeles a ~{transform[0]:.0f} m")
+    if n_pix > 60_000_000:
+        print("  [AVISO] Grilla muy grande: si te quedas sin memoria, sube 'salida_mapa.resolucion_m' "
+              "en config.yaml (p.ej. 100).")
+
+    # Metadatos del GeoTIFF de salida, construidos desde la grilla del DEM.
+    meta_base = {
+        'driver': 'GTiff', 'dtype': rasterio.float32, 'count': 1,
+        'crs': crs, 'transform': transform, 'width': width, 'height': height,
+        'nodata': -9999.0,
+    }
+
+    # 3. Cargar variables raster sobre la grilla fina.
+    # GHI (~1 km) se reproyecta/upsamplea a la grilla del DEM: solo alinea, no agrega
+    # información nueva (el dato sigue siendo de 1 km), pero permite predecir en la grilla fina.
+    ghi_data = read_and_reproject_to_grid(ghi_path, crs, grid_shape, transform, nodata_val=np.nan)
+    ghi_mask_valid = ~np.isnan(ghi_data)
 
     elev_data = read_and_reproject_to_grid(dem_path, crs, grid_shape, transform, nodata_val=np.nan)
     slope_data = read_and_reproject_to_grid(slope_path, crs, grid_shape, transform, nodata_val=np.nan)
-    aspect_data = read_and_reproject_to_grid(aspect_path, crs, grid_shape, transform, nodata_val=np.nan)
+    # 'aspect' es circular (0°/360°): se reproyecta con NEAREST para no interpolar a través
+    # de la discontinuidad angular. Además queda consistente con el muestreo por vecino más
+    # cercano usado en el entrenamiento (src/sampling.py).
+    aspect_data = read_and_reproject_to_grid(aspect_path, crs, grid_shape, transform, nodata_val=np.nan,
+                                             resampling=Resampling.nearest)
 
-    # Transformación lineal de variable circular 'aspect' a 'northness' en las matrices
+    # Transformación de la variable circular 'aspect' a 'northness' en las matrices
     print("  Transformando variable matricial 'aspect' a 'northness'...")
     with np.errstate(invalid='ignore'):
         northness_data = np.cos(np.radians(aspect_data))
@@ -245,10 +285,14 @@ def main():
     dist_almacen_flat = dist_almacen_data[valid_mask]
     dist_subestaciones_flat = dist_subestaciones_data[valid_mask]
 
-    # Firma de orden de entrada estricta del modelo 
+    # Firma de orden de entrada estricta del modelo. Debe coincidir con FEATURES
+    # (src/features.py); el assert falla en voz alta si alguien reordena las features.
+    assert FEATURES == ['slope', 'ghi', 'elev', 'northness',
+                        'dist_transmision', 'dist_almacen', 'dist_subestaciones'], (
+        "El orden de FEATURES cambió: actualiza el column_stack de X_pred acorde.")
     X_pred = np.column_stack((
         slope_flat, ghi_flat, elev_flat, northness_flat,
-        dist_trans_flat, dist_almacen_flat, 
+        dist_trans_flat, dist_almacen_flat,
         dist_subestaciones_flat,
     ))
 

@@ -134,27 +134,22 @@ def generar_dataset_muestras(
     n_neg_deseados = len(positivas) * ratio
     puntos_random = []
 
-    radio_buffer_metros = criterios.get('dist_max', 20000) 
-    print(f"  Generando espacio de factibilidad: Buffer de {radio_buffer_metros/1000:.1f} km alrededor de líneas...")
-    buffer_lineas = lineas_norte.geometry.buffer(radio_buffer_metros).union_all()
-
-    print("  Generando candidatos aleatorios dentro del espacio restringido...")
+    # Los candidatos se generan en toda la región de estudio (sin restringir a un buffer
+    # alrededor de las líneas: ese filtro introducía sesgo y quedó descartado). El criterio
+    # de distancia máxima a transmisión se aplica más abajo, en el filtro AHP.
+    print("  Generando candidatos aleatorios dentro de las regiones de estudio...")
     intentos = 0
     while len(puntos_random) < n_neg_deseados * 6 and intentos < n_neg_deseados * 150:
         intentos += 1
         x = rng.uniform(bounds[0], bounds[2])
         y = rng.uniform(bounds[1], bounds[3])
         pto = Point(x, y)
-        
-        # CAMBIO DEBIDO A SESGO
-        #if regiones_norte.contains(pto).any() and pto.intersects(buffer_lineas):
-        #    puntos_random.append(pto)
 
         if regiones_norte.contains(pto).any():
             puntos_random.append(pto)
 
     candidatos_neg = gpd.GeoDataFrame(geometry=puntos_random, crs='EPSG:32719')
-    print(f"  Se generaron {len(candidatos_neg)} candidatos iniciales en el buffer.")
+    print(f"  Se generaron {len(candidatos_neg)} candidatos iniciales.")
 
     # 4. Exclusión: buffer alrededor de plantas existentes
     buffer_plantas = positivas.geometry.buffer(5000).union_all()

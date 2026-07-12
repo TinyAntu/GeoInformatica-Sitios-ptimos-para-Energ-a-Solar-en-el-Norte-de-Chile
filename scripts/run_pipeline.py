@@ -12,6 +12,9 @@ from src.sampling import generar_dataset_muestras
 from src.modeling import entrenar_modelo_rf
 from src.utils import _esta_actualizado
 from scripts.run_spatial_validation import main as run_spatial_validation
+from scripts.generate_suitability_map import main as generar_mapa_rf
+from scripts.profiles import main as generar_perfiles_ahp
+from scripts.generar_figuras_informe import main as generar_figuras_informe
 
 def _resolver_rutas(obj, base_dir: str):
     """Convierte recursivamente todas las rutas relativas del config a absolutas."""
@@ -32,6 +35,8 @@ def _shapefile_paths(shp_path: str) -> list:
 def main():
     parser = argparse.ArgumentParser(description='Pipeline Solar Norte de Chile')
     parser.add_argument('--config', default='config.yaml', help='Ruta al archivo de configuración')
+    parser.add_argument('--sin-mapas', action='store_true',
+                        help='Omite las etapas de mapas y figuras (5-7); útil para iterar solo en el modelo')
     args = parser.parse_args()
 
     print("Iniciando Pipeline Solar...")
@@ -63,6 +68,7 @@ def main():
         out_slope_path=slope_out,
         out_aspect_path=aspect_out,
         out_dem_path=dem_out,
+        resolucion_m=config.get('preprocesamiento', {}).get('dem_resolucion_m'),
     )
 
     # --- Etapa 2: Reproyección GHI ---
@@ -113,11 +119,50 @@ def main():
             tamano_bloque_km=config.get('validacion', {}).get('tamano_bloque_km', 15),
         )
 
-    # Ejecutamos la validacion espacial propuesta
+    # --- Etapa 4: Validación espacial ---
     print("Ejecutando validación espacial...")
     run_spatial_validation()
 
-    print("Pipeline ejecutado correctamente.")
+    if args.sin_mapas:
+        print("\nEtapas de mapas y figuras omitidas (--sin-mapas).")
+        print("Pipeline ejecutado correctamente.")
+        return
+
+    # Las rutas de salida de las etapas 5-7 están definidas dentro de cada script;
+    # aquí se replican solo para el chequeo incremental (_esta_actualizado).
+    rasters_procesados = [dem_out, slope_out, aspect_out, ghi_utm_out]
+
+    # --- Etapa 5: Mapa de probabilidad RF ---
+    print("\n--- Etapa 5: Mapa de probabilidad RF ---")
+    mapa_rf = os.path.join(directorio_raiz, 'data/results/mapa_probabilidad_aptitud.tif')
+    entradas_mapa = [ruta_config] + rasters_procesados
+    if model_out:
+        entradas_mapa.append(model_out)
+    if _esta_actualizado(entradas_mapa, [mapa_rf]):
+        print("El mapa de probabilidad ya está actualizado. Se omite.")
+    else:
+        generar_mapa_rf()
+
+    # --- Etapa 6: Mapas de perfiles AHP/WLC ---
+    print("\n--- Etapa 6: Mapas de perfiles de inversión (AHP/WLC) ---")
+    mapas_perfiles = [os.path.join(directorio_raiz, f'data/results/aptitud_{p}.tif')
+                      for p in ('conservador', 'agresivo')]
+    if _esta_actualizado([ruta_config] + rasters_procesados, mapas_perfiles):
+        print("Los mapas de perfiles ya están actualizados. Se omiten.")
+    else:
+        generar_perfiles_ahp()
+
+    # --- Etapa 7: Figuras cartográficas del informe ---
+    print("\n--- Etapa 7: Figuras cartográficas (7 elementos) ---")
+    figuras = [os.path.join(directorio_raiz, 'figures', nombre)
+               for nombre in ('mapa_aptitud_rf.png', 'mapa_aptitud_conservador.png',
+                              'mapa_aptitud_agresivo.png')]
+    if _esta_actualizado([mapa_rf] + mapas_perfiles, figuras):
+        print("Las figuras cartográficas ya están actualizadas. Se omiten.")
+    else:
+        generar_figuras_informe()
+
+    print("\nPipeline ejecutado correctamente.")
 
 
 if __name__ == "__main__":

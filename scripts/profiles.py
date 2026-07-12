@@ -12,16 +12,21 @@ from scipy.ndimage import distance_transform_edt
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
+from src.ahp import pesos_perfil  # AHP formal con Ratio de Consistencia (hallazgo 3.3)
+
 # --- FUNCIONES GEOESPACIALES EN MEMORIA ---
 
-def read_and_reproject_to_grid(src_path, dst_crs, dst_shape, dst_transform, nodata_val=np.nan):
+def read_and_reproject_to_grid(src_path, dst_crs, dst_shape, dst_transform, nodata_val=np.nan,
+                               resampling=Resampling.bilinear):
+    # `resampling` debe ser Resampling.nearest para variables circulares como 'aspect'
+    # (no se pueden interpolar linealmente a través de la discontinuidad 0°/360°).
     with rasterio.open(src_path) as src:
         destination = np.empty(dst_shape, dtype=np.float32)
         reproject(
             source=rasterio.band(src, 1), destination=destination,
             src_transform=src.transform, src_crs=src.crs,
             dst_transform=dst_transform, dst_crs=dst_crs,
-            resampling=Resampling.bilinear, src_nodata=src.nodata, dst_nodata=nodata_val
+            resampling=resampling, src_nodata=src.nodata, dst_nodata=nodata_val
         )
         return destination
 
@@ -71,6 +76,7 @@ def main():
 
     paths_raw = config['paths']['raw']
     perfiles_config = config.get('perfiles_inversion', {})
+    ahp_config = config.get('ahp_perfiles', {})  # matrices AHP por perfil (opcional)
 
     if not perfiles_config:
         print("ERROR: No se encontró la sección 'perfiles_inversion' en config.yaml.")
@@ -103,8 +109,10 @@ def main():
     print("Alineando variables topográficas...")
     elev_data = read_and_reproject_to_grid(dem_path, crs, grid_shape, transform)
     slope_data = read_and_reproject_to_grid(slope_path, crs, grid_shape, transform)
-    aspect_data = read_and_reproject_to_grid(aspect_path, crs, grid_shape, transform)
-    
+    # 'aspect' es circular: NEAREST evita interpolar a través de 0°/360°.
+    aspect_data = read_and_reproject_to_grid(aspect_path, crs, grid_shape, transform,
+                                             resampling=Resampling.nearest)
+
     with np.errstate(invalid='ignore'):
         northness_data = np.cos(np.radians(aspect_data))
 
@@ -158,9 +166,11 @@ def main():
     meta_base.update(dtype=rasterio.float32, nodata=-9999.0, count=1)
     
     for nombre_perfil in ['conservador', 'agresivo']:
-        pesos = perfiles_config.get(nombre_perfil)
+        # Pesos derivados por AHP (validados con Ratio de Consistencia) si hay matriz
+        # para el perfil; si no, se usan los pesos directos de 'perfiles_inversion'.
+        pesos = pesos_perfil(nombre_perfil, ahp_config) or perfiles_config.get(nombre_perfil)
         if not pesos: continue
-            
+
         print(f"\nCalculando perfil: {nombre_perfil.capitalize()}...")
         mapa_wlc = np.full(grid_shape, -9999.0, dtype=np.float32)
         

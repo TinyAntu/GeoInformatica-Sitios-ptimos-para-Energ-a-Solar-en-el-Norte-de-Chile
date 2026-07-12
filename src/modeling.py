@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, brier_score_loss, precision_recall_curve, average_precision_score, roc_curve, auc
-from src.spatial_validation import asignar_region_a_muestras, asignar_bloques_espaciales, make_objective_spatial
+from src.spatial_validation import asignar_region_a_muestras, asignar_bloques_espaciales, make_objective_spatial, spatial_block_cv
+from src.features import FEATURES
 
 
 def optimizar_hiperparametros_optuna(positivas_df, pool_neg_df, features, ratio,
@@ -71,13 +72,18 @@ def _entrenar_y_evaluar(positivas_df, pool_neg_df, features, ratio, n_estimators
                                  random_state=random_state, 
                                  class_weight='balanced')
     clf.fit(X_train, y_train)
-    
+
     # Predicción de probabilidades para la clase 1 (sitio óptimo)
     y_probs = clf.predict_proba(X_test)[:, 1]
-    
-    # CÁLCULO DE MÉTRICAS
+
+    # CÁLCULO DE MÉTRICAS (sobre el test retenido, no sobre datos vistos)
     auc = roc_auc_score(y_test, y_probs)
     brier = brier_score_loss(y_test, y_probs)  # AGREGADO: Brier Score
+
+    # Reentrenar el modelo final sobre el 100% de los datos para despliegue:
+    # las métricas de arriba ya salieron del test retenido, así que el modelo que
+    # genera el mapa debe aprovechar todas las muestras disponibles.
+    clf.fit(X, y)
 
     # Extraer importancias de características y ordenarlas de mayor a menor
     importances = (
@@ -165,9 +171,8 @@ def entrenar_modelo_rf(
     """
     Entrena el Random Forest con el ratio principal incorporando Brier Score y análisis de sensibilidad.
     """
-    # Lista de características unificada
-    features = ['slope', 'ghi', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones']
-    #features = ['slope', 'ghi', 'elev', 'northness', 'dist_subestaciones']
+    # Lista de características canónica (definida una sola vez en src/features.py)
+    features = list(FEATURES)
 
     # Mostrar matriz de correlación antes de la optimización para entender relaciones entre características
     muestras = pd.concat([positivas, pool_negativos.sample(n=min(int(len(positivas) * ratio), len(pool_negativos)), random_state=random_state)], ignore_index=True)
@@ -205,6 +210,25 @@ def entrenar_modelo_rf(
 
     print(f"  Resultado Ratio 1:{ratio} -> AUC: {auc:.4f} | Brier Score: {brier:.4f}")
     print(importances.to_string(index=False))
+
+    # --- MÉTRICA DE RECORD: Spatial Block CV (no el split aleatorio) ---
+    # El AUC/Brier de arriba viene de un train_test_split ALEATORIO y por lo tanto
+    # está inflado por autocorrelación espacial (Roberts et al. 2017; Ploton et al. 2020).
+    # Reportamos SBCV como la métrica honesta y la guardamos como principal.
+    dataset_cv = asignar_bloques_espaciales(dataset.copy(), tamano_bloque_m=tamano_bloque_km * 1000)
+    params_rf_sbcv = {
+        'n_estimators':     best_n_estimators,
+        'max_depth':        best_max_depth,
+        'min_samples_leaf': best_min_samples_leaf,
+        'class_weight':     'balanced',
+    }
+    sbcv = spatial_block_cv(
+        dataset_cv, features, params_rf_sbcv,
+        n_splits=5, random_state=random_state, tamano_bloque_km=tamano_bloque_km,
+    )
+    auc_sbcv, brier_sbcv = sbcv['auc_mean'], sbcv['brier_mean']
+    print(f"  [MÉTRICA DE RECORD] SBCV AUC = {auc_sbcv:.4f} ± {sbcv['auc_std']:.4f} | "
+          f"Brier = {brier_sbcv:.4f}  (el AUC del split aleatorio es referencia optimista)")
 
     feature_path = _guardar_importancias(importances, 'feature_importances_rf.png')
     pr_path = _guardar_curva_precision_recall(y_test_p, y_probs_p, f'precision_recall_ratio_{ratio}.png')
@@ -255,7 +279,12 @@ def entrenar_modelo_rf(
         metrics_path = os.path.splitext(out_model_path)[0] + '_metrics.json'
         metrics = {
             'ratio_principal': ratio,
-            'auc': float(auc),
+            # Métrica de record (espacialmente consciente):
+            'auc_sbcv': float(auc_sbcv),
+            'brier_sbcv': float(brier_sbcv),
+            # Métricas del split aleatorio: OPTIMISTAS por autocorrelación espacial.
+            'auc_split_aleatorio': float(auc),
+            'auc': float(auc),  # se conserva por compatibilidad con scripts existentes
             'brier_score': float(brier),  # AGREGADO al JSON
             'ratio_alt': ratio_alt,
             'auc_alt': float(auc_alt) if auc_alt is not None else None,

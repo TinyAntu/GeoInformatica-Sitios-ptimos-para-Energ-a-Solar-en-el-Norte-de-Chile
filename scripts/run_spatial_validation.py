@@ -21,6 +21,7 @@ from src.spatial_validation import (
     graficar_folds_espaciales,
     guardar_reporte_validacion,
 )
+from src.features import FEATURES
 
 
 def main():
@@ -57,8 +58,8 @@ def main():
         'min_samples_leaf': best_params['min_samples_leaf'],
         'class_weight':     'balanced',
     }
-    # Mismas 7 features (y mismo orden) que el modelo entrenado en modeling.py
-    features = ['slope', 'ghi', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones']
+    # Mismas features (y mismo orden) que el modelo entrenado (definidas en src/features.py)
+    features = list(FEATURES)
 
     # Tamaño de bloque espacial centralizado en config.yaml (fallback 15 km)
     tam_km = config.get('validacion', {}).get('tamano_bloque_km', 15)
@@ -101,7 +102,7 @@ def main():
     print("\n" + "="*70)
     print("RESUMEN EJECUTIVO PARA PEP1")
     print("="*70)
-    print(f"SBCV (k=5, bloques 15 km):  AUC = {sbcv['auc_mean']:.4f} ± {sbcv['auc_std']:.4f}")
+    print(f"SBCV (k=5, bloques {tam_km:.0f} km):  AUC = {sbcv['auc_mean']:.4f} ± {sbcv['auc_std']:.4f}")
     print(f"LOROCV:                     AUC medio = {lorocv['auc_mean']:.4f}")
     print(f"                            GAP = {lorocv['gap_auc']:.4f}")
     print(f"                            {lorocv['interpretacion']}")

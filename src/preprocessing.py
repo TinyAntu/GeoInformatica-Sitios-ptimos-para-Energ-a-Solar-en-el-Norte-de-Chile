@@ -10,7 +10,7 @@ import surtgis
 import geopandas as gpd
 
 
-def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, out_dem_path: str | None = None) -> None:
+def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, out_dem_path: str | None = None, resolucion_m: float | None = None) -> None:
     print("Deduplicando y uniendo archivos DEM...")
     archivos_hgt_unicos = {}
     for carpeta in carpetas_dem:
@@ -40,8 +40,8 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
             nodata_value = src.nodata if src.nodata is not None else -9999.0
             dst_transform = src.transform
             dst_crs = src.crs
-            dem_utm = src.read(1).astype('float64')
-        dem_utm = np.where(dem_utm == nodata_value, np.nan, dem_utm)
+            dem_utm = src.read(1).astype('float32')
+        dem_utm[dem_utm == nodata_value] = np.nan  # in-place: conserva float32
     else:
         # Nivel 3: proceso completo
         # Paso 1: merge en EPSG:4326
@@ -56,21 +56,25 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
                 f.close()
         print(f"DEM fusionado con dimensiones: {dem_geo.shape}")
 
-        dem_geo = dem_geo[0].astype('float64')
-        dem_geo = np.where(dem_geo == nodata_value, np.nan, dem_geo)
+        # float32 en vez de float64: la mitad de memoria. El DEM se guarda como float32 de
+        # todos modos, así que la salida no cambia. Mantenemos el nodata como centinela
+        # (reproject lo maneja con src_nodata) para evitar copias nan<->nodata innecesarias.
+        dem_geo = dem_geo[0].astype('float32')
 
         # Paso 2: reproyectar a UTM EPSG:32719 en memoria
         print("Reproyectando DEM fusionado a UTM EPSG:32719...")
         dst_crs = rasterio.crs.CRS.from_epsg(32719)
         h, w = dem_geo.shape
         bounds = rasterio.transform.array_bounds(h, w, transform_geo)
+        # resolucion_m fuerza la resolución de destino en metros; None = nativa (~30 m).
+        # Subirla reduce el uso de memoria de forma cuadrática (área > 200.000 km²).
         dst_transform, dst_width, dst_height = calculate_default_transform(
-            src_crs, dst_crs, w, h, *bounds
+            src_crs, dst_crs, w, h, *bounds,
+            resolution=resolucion_m if resolucion_m else None,
         )
-        dem_para_reproyectar = np.where(np.isnan(dem_geo), nodata_value, dem_geo)
-        dem_utm = np.full((dst_height, dst_width), nodata_value, dtype='float64')
+        dem_utm = np.full((dst_height, dst_width), nodata_value, dtype='float32')
         reproject(
-            source=dem_para_reproyectar,
+            source=dem_geo,
             src_transform=transform_geo,
             src_crs=src_crs,
             destination=dem_utm,
@@ -80,7 +84,8 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
             src_nodata=nodata_value,
             dst_nodata=nodata_value,
         )
-        dem_utm = np.where(dem_utm == nodata_value, np.nan, dem_utm)
+        del dem_geo  # liberar el DEM geográfico antes de derivar slope/aspect
+        dem_utm[dem_utm == nodata_value] = np.nan  # in-place: conserva float32 sin copiar
 
         # Paso 3: guardar DEM UTM para usarlo como caché en futuras ejecuciones
         if out_dem_path:
@@ -96,13 +101,15 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
             with rasterio.open(out_dem_path, 'w', **meta_dem) as dst:
                 dst.write(np.where(np.isnan(dem_utm), nodata_value, dem_utm).astype('float32'), 1)
 
-    # Paso 4 : calcular slope y aspect sobre el DEM UTM
+    # Paso 4 : calcular slope y aspect sobre el DEM UTM.
+    # Patrón de memoria: los CÁLCULOS se hacen en float64 (surtgis, Rust/PyO3, exige un
+    # arreglo float64 C-contiguo), pero cada arreglo se libera apenas deja de necesitarse
+    # (calcular → guardar → del). El nodata se rellena in-place para no crear la copia
+    # completa que generaba np.where. Con esto el pico de la fase pasa de ~4.5 arreglos
+    # simultáneos a ~2 (a resolución nativa: ~28 GB → ~15 GB).
     cell_size = abs(dst_transform[0])
     print(f"Tamaño de celda UTM: {cell_size:.2f} m")
-    print("Calculando slope...")
-    slope_array = surtgis.slope(dem_utm, cell_size=cell_size, units='degrees')
-    print("Calculando aspect...")
-    aspect_array = surtgis.aspect_degrees(dem_utm, cell_size=cell_size)
+    dem_utm = np.ascontiguousarray(dem_utm, dtype=np.float64)  # libera el buffer float32 al reasignar
 
     meta_derivados = {
         'driver': 'GTiff', 'dtype': rasterio.float32, 'count': 1,
@@ -114,13 +121,22 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
         if parent:
             os.makedirs(parent, exist_ok=True)
 
+    print("Calculando slope...")
+    slope_array = surtgis.slope(dem_utm, cell_size=cell_size, units='degrees')
+    slope_array[np.isnan(slope_array)] = nodata_value
     print(f"Guardando slope en {out_slope_path}...")
     with rasterio.open(out_slope_path, 'w', **meta_derivados) as dst:
-        dst.write(np.where(np.isnan(slope_array), nodata_value, slope_array).astype('float32'), 1)
+        dst.write(slope_array.astype('float32'), 1)
+    del slope_array  # liberar antes de calcular aspect
 
+    print("Calculando aspect...")
+    aspect_array = surtgis.aspect_degrees(dem_utm, cell_size=cell_size)
+    del dem_utm  # el DEM ya no se necesita
+    aspect_array[np.isnan(aspect_array)] = nodata_value
     print(f"Guardando aspect en {out_aspect_path}...")
     with rasterio.open(out_aspect_path, 'w', **meta_derivados) as dst:
-        dst.write(np.where(np.isnan(aspect_array), nodata_value, aspect_array).astype('float32'), 1)
+        dst.write(aspect_array.astype('float32'), 1)
+    del aspect_array
 
     generados = [out_slope_path, out_aspect_path]
     if out_dem_path and not dem_en_cache:
