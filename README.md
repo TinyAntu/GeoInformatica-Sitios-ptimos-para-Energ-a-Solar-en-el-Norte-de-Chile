@@ -7,4 +7,4 @@ pip install -r requirements.txt
 
 python scripts/run pipeline.py --config config.yaml.
 
-Para descargar los datos por favor acceda a: 
+Para descargar los datos por favor acceda a: https://drive.google.com/drive/folders/1ujkfnfOVDNQYJluZw06fFZAsKIZ-7T0z?usp=sharing
