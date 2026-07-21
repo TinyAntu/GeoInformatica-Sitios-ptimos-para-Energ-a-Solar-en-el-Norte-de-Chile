@@ -1,0 +1,16 @@
+# Dependencias reales del pipeline (Python 3.10+).
+# `glob` y `os` son parte de la librería estándar (no van aquí) y `torch` no se usa.
+# Antes de la entrega, fija las versiones exactas de TU entorno (lo pide la rúbrica):
+#     pip freeze > requirements.txt      # o añade ==X.Y.Z a cada línea
+numpy
+pandas
+geopandas
+shapely
+rasterio
+scipy
+scikit-learn
+optuna
+joblib
+PyYAML
+matplotlib
+surtgis
