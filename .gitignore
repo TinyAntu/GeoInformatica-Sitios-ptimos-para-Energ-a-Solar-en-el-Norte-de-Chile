@@ -2,6 +2,7 @@ data/processed/
 data/raw/
 data/result/
 data/results/
+data/results/mapa_probabilidad_aptitud.tif
 
 *. tif
 *. gpkg
