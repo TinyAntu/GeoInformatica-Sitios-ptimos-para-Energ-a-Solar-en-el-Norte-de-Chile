@@ -4,12 +4,12 @@ data/result/
 data/results/
 data/results/mapa_probabilidad_aptitud.tif
 
-*. tif
-*. gpkg
-*. shp
+*.tif
+*.gpkg
+*.shp
 # Python
 __pycache__ /
-*. pyc
+*.pyc
 # Virtual Environment
 . venv /
 . ipynb_checkpoints /
