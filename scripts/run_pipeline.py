@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import argparse
 import yaml
@@ -15,6 +15,7 @@ from scripts.run_spatial_validation import main as run_spatial_validation
 from scripts.generate_suitability_map import main as generar_mapa_rf
 from scripts.profiles import main as generar_perfiles_ahp
 from scripts.generar_figuras_informe import main as generar_figuras_informe
+from scripts.validate_and_load_postgis import main as validar_postgis
 
 def _resolver_rutas(obj, base_dir: str):
     """Convierte recursivamente todas las rutas relativas del config a absolutas."""
@@ -161,6 +162,10 @@ def main():
         print("Las figuras cartográficas ya están actualizadas. Se omiten.")
     else:
         generar_figuras_informe()
+
+    # --- Etapa 8: Validación de Coordenadas e Ingesta PostGIS ---
+    print("\n--- Etapa 8: Validación de Coordenadas e Ingesta PostGIS ---")
+    validar_postgis()
 
     print("\nPipeline ejecutado correctamente.")
 

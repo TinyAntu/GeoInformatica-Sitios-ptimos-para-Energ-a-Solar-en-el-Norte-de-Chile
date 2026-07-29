@@ -1,0 +1,3 @@
+- Usar Python como lenjuage default
+- Considerar los archivos de datos en la carpeta data
+- Considerar unicamente las regiones de Antofagasta y Atacama

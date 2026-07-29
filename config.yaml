@@ -25,6 +25,34 @@ paths:
   results:
     dataset_ml: "data/results/dataset_entrenamiento_rf.shp"
     model_rf:   "data/results/model_rf.pkl"
+    postgis_sql: "data/results/cargar_instalaciones_postgis.sql"
+    postgis_report: "data/results/reporte_validacion_postgis.json"
+    valid_sites_shp: "data/results/instalaciones_optimas_validadas.shp"
+
+# Configuración de validación y carga en PostGIS
+postgis_validation:
+  target_srid: 32719
+  prob_min: 0.70
+  min_area_m2: 10000.0
+  duplicate_tolerance_m: 50.0
+  table_name: "instalaciones_solares_optimas"
+  schema: "public"
+  connection:
+    host: "localhost"
+    port: 5432
+    dbname: "geoinformatica_db"
+    user: "postgres"
+    password: ""
+  bounds_utm:
+    min_x: 100000.0
+    max_x: 900000.0
+    min_y: 6000000.0
+    max_y: 8500000.0
+  bounds_geo:
+    min_lon: -72.5
+    max_lon: -66.5
+    min_lat: -30.0
+    max_lat: -17.0
 
 # Parámetros AHP y criterios de elegibilidad para candidatos negativos
 criterios:
