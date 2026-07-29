@@ -1,6 +1,7 @@
 data/processed/
 data/raw/
 data/result/
+data/results/
 
 *. tif
 *. gpkg
