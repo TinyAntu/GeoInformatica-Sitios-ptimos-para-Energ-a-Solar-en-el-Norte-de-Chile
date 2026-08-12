@@ -13,4 +13,5 @@ optuna
 joblib
 PyYAML
 matplotlib
+shap==0.52.0
 surtgis
