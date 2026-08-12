@@ -118,7 +118,14 @@ optuna_params:
     min: 2
     max: 10
 
-# El perfil 'balanceado' se carga dinámicamente desde los resultados del modelo ML
+# Perfiles de inversión (pesos AHP/WLC). El perfil 'balanceado' se carga dinámicamente
+# desde los resultados del modelo ML.
+# Lectura fijo vs. seguidor (T3, data/results/comparacion_montaje.json): sobre nuestro DEM
+# el seguidor de un eje rinde ~+52% sobre el montaje fijo en las zonas aptas (por encima
+# del ~+36% de referencia del autor del motor). El perfil 'agresivo' (prioriza
+# radiación/rendimiento) capitaliza esa ganancia; el 'conservador' (prioriza cercanía a
+# infraestructura) la pondera contra el mayor CAPEX/mantenimiento del seguidor. No se
+# modifican las matrices AHP: la comparación es una lectura, no un cambio de pesos.
 perfiles_inversion:
   conservador:
     ghi: 0.10
