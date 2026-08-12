@@ -1,0 +1,14 @@
+{
+  "total_evaluados": 5776,
+  "total_validos": 5144,
+  "total_rechazados": 632,
+  "tasa_aprobacion_pct": 89.06,
+  "target_srid": 32719,
+  "conteo_motivos_rechazo": {
+    "FUERA_DE_REGION_DE_ESTUDIO": 63,
+    "APTITUD_BAJO_UMBRAL": 74,
+    "PENDIENTE_EXCEDE_MAXIMA": 464,
+    "ELEVACION_EXCEDE_MAXIMA": 45
+  },
+  "fecha_ejecucion": "2026-07-28T16:09:09.060584"
+}

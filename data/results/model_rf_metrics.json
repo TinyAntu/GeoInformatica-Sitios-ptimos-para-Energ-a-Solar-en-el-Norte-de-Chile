@@ -1,0 +1,48 @@
+{
+  "ratio_principal": 3,
+  "auc_sbcv": 0.9684475442791974,
+  "brier_sbcv": 0.06512796733506518,
+  "auc_split_aleatorio": 0.9728353140916807,
+  "auc": 0.9728353140916807,
+  "brier_score": 0.060976226066358524,
+  "ratio_alt": 10,
+  "auc_alt": 0.9734933035714285,
+  "brier_score_alt": 0.04616877773200302,
+  "n_positivas": 105,
+  "n_negativas": 315,
+  "feature_importances": [
+    {
+      "Criterio": "dist_subestaciones",
+      "Peso_ML": 0.4316403554301106
+    },
+    {
+      "Criterio": "dist_transmision",
+      "Peso_ML": 0.2970606496632901
+    },
+    {
+      "Criterio": "slope",
+      "Peso_ML": 0.0959608269130939
+    },
+    {
+      "Criterio": "elev",
+      "Peso_ML": 0.06066678883362504
+    },
+    {
+      "Criterio": "dist_almacen",
+      "Peso_ML": 0.05107527811747447
+    },
+    {
+      "Criterio": "ghi",
+      "Peso_ML": 0.03641276730236969
+    },
+    {
+      "Criterio": "northness",
+      "Peso_ML": 0.027183333740036196
+    }
+  ],
+  "best_params": {
+    "n_estimators": 100,
+    "max_depth": 7,
+    "min_samples_leaf": 2
+  }
+}

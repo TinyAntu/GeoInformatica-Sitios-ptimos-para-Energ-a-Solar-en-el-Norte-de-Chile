@@ -1,0 +1,154 @@
+{
+  "spatial_block_cv": {
+    "estrategia": "spatial_block_cv",
+    "n_splits": 5,
+    "tamano_bloque_km": 30,
+    "auc_por_fold": [
+      0.87421875,
+      0.9696342305037958,
+      0.9904761904761905,
+      0.989516129032258,
+      0.9386724386724387
+    ],
+    "brier_por_fold": [
+      0.11728282243437911,
+      0.0533679533487087,
+      0.04491940635078374,
+      0.03900413563113857,
+      0.08881303767080877
+    ],
+    "auc_mean": 0.9525035477369366,
+    "auc_std": 0.043416868144700776,
+    "brier_mean": 0.06867747108716378,
+    "brier_std": 0.02982366520640462,
+    "importancias": [
+      {
+        "feature": "dist_subestaciones",
+        "importance_mean": 0.4289869987746261,
+        "importance_std": 0.022655494314888447
+      },
+      {
+        "feature": "dist_transmision",
+        "importance_mean": 0.2973507957807546,
+        "importance_std": 0.021510177613125923
+      },
+      {
+        "feature": "slope",
+        "importance_mean": 0.09570994815993547,
+        "importance_std": 0.021595472254004558
+      },
+      {
+        "feature": "elev",
+        "importance_mean": 0.05568443078898059,
+        "importance_std": 0.010434700681790818
+      },
+      {
+        "feature": "dist_almacen",
+        "importance_mean": 0.053208504652075536,
+        "importance_std": 0.009592800119166583
+      },
+      {
+        "feature": "ghi",
+        "importance_mean": 0.04572426833456732,
+        "importance_std": 0.008263771624050956
+      },
+      {
+        "feature": "northness",
+        "importance_mean": 0.023335053509060483,
+        "importance_std": 0.004296351661934345
+      }
+    ]
+  },
+  "leave_one_region_out_cv": {
+    "estrategia": "leave_one_region_out_cv",
+    "folds": {
+      "Antofagasta": {
+        "region_train": [
+          "Atacama"
+        ],
+        "region_test": "Antofagasta",
+        "n_train": 136,
+        "n_test": 284,
+        "n_pos_train": 50,
+        "n_pos_test": 55,
+        "auc": 0.9700674870980548,
+        "brier": 0.0625629932059277,
+        "importancias": [
+          {
+            "feature": "dist_subestaciones",
+            "importance": 0.39229189598279984
+          },
+          {
+            "feature": "dist_transmision",
+            "importance": 0.3079133726644122
+          },
+          {
+            "feature": "slope",
+            "importance": 0.12309645612563186
+          },
+          {
+            "feature": "ghi",
+            "importance": 0.061080472797971366
+          },
+          {
+            "feature": "elev",
+            "importance": 0.042651884273581686
+          },
+          {
+            "feature": "northness",
+            "importance": 0.0370421133275759
+          },
+          {
+            "feature": "dist_almacen",
+            "importance": 0.03592380482802719
+          }
+        ]
+      },
+      "Atacama": {
+        "region_train": [
+          "Antofagasta"
+        ],
+        "region_test": "Atacama",
+        "n_train": 284,
+        "n_test": 136,
+        "n_pos_train": 55,
+        "n_pos_test": 50,
+        "auc": 0.9641860465116279,
+        "brier": 0.07829853053870847,
+        "importancias": [
+          {
+            "feature": "dist_subestaciones",
+            "importance": 0.4372632497716106
+          },
+          {
+            "feature": "dist_transmision",
+            "importance": 0.2594874703610425
+          },
+          {
+            "feature": "dist_almacen",
+            "importance": 0.0996583583889048
+          },
+          {
+            "feature": "slope",
+            "importance": 0.08789663316414123
+          },
+          {
+            "feature": "elev",
+            "importance": 0.050769143002000416
+          },
+          {
+            "feature": "ghi",
+            "importance": 0.046820052299247565
+          },
+          {
+            "feature": "northness",
+            "importance": 0.01810509301305295
+          }
+        ]
+      }
+    },
+    "auc_mean": 0.9671267668048413,
+    "gap_auc": 0.005881440586426923,
+    "interpretacion": "Fenómeno geográficamente homogéneo; modelo generalizable inter-regional."
+  }
+}
