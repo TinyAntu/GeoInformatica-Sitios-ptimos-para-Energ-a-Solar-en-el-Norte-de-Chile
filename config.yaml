@@ -54,6 +54,26 @@ postgis_validation:
     min_lat: -30.0
     max_lat: -17.0
 
+# Integración con el motor Rust solarpv-rs (mapa de rendimiento kWh/kWp/año).
+# El binario se compila aparte: cargo build --release -p solarpv-cli --features terrain
+# La validación de CRS/extensión reutiliza postgis_validation.target_srid y bounds_utm.
+solarpv:
+  binario: "solarpv-rs/target/release/solarpv"  # ejecutable compilado ([[bin]] name = "solarpv")
+  lat: -23.6          # latitud de referencia (Antofagasta/Atacama)
+  lon: -69.5          # longitud de referencia
+  date: "2026-01-01"  # fecha base para la simulación anual
+  dem: "data/processed/dem_norte_32719.tif"  # DEM de entrada (mismo del pipeline)
+  out_prefix: "data/results/rendimiento"     # salida: data/results/rendimiento_specific_yield.tif
+  # Remuestreo del DEM antes de correr el motor (controla runtime/memoria).
+  # El motor corre ~25k celdas/s: el DEM nativo (~90 m, 86 M celdas) tarda ~1 h.
+  #   300  -> ~7.7 M celdas, ~5 min. Recomendado para demo/iteración.
+  #   null -> resolución nativa del DEM (~90 m): máxima fidelidad de terreno, ~1 h.
+  resolucion_m: 300
+  montaje:
+    tilt: 23            # inclinación (grados) para montaje fijo
+    surface_azimuth: 0  # azimut de la superficie (0 = mirando al norte en HS)
+    gcr: 0.3            # ground coverage ratio para el seguidor de un eje
+
 # Parámetros AHP y criterios de elegibilidad para candidatos negativos
 criterios:
   ghi_min:   160

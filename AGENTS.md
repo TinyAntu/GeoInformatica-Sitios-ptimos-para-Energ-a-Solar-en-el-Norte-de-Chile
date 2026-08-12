@@ -47,7 +47,7 @@ Proyecto: **Sitios óptimos para plantas solares fotovoltaicas en el norte de Ch
 
 ## 6. Integración con `solarpv-rs`
 
-- Repo del motor: `https://github.com/franciscoparrao/solarpv-rs`. Se compila con `cargo build --release -p solarpv-cli --features terrain`.
+- Repo del motor: `https://github.com/franciscoparrao/solarpv-rs`. Requiere clonar además `https://github.com/franciscoparrao/surtgis` como repo hermano (dependencia de path del paso terrain). Se compila con `cargo build --release -p solarpv-cli` (el feature `terrain` ya viene activo por defecto en el CLI; NO uses `--features terrain`, no existe en ese paquete). El binario resultante es `solarpv-rs/target/release/solarpv` (el `[[bin]]` se llama `solarpv`, no `solarpv-cli`).
 - El motor produce `specific_yield.tif` (kWh/kWp/año por celda) en **EPSG:32719** sobre el mismo DEM: es directamente comparable, celda a celda, con `data/results/mapa_probabilidad_aptitud.tif`.
 - Regla de integración: el pipeline Python invoca el binario Rust (subprocess) y consume sus `.tif`; no reimplementes la física PV en Python. Valida siempre que la salida del motor esté en EPSG:32719 y en la extensión de Antofagasta/Atacama antes de cruzarla.
 - Fija la versión del motor con `Cargo.lock` para reproducibilidad.
@@ -55,6 +55,7 @@ Proyecto: **Sitios óptimos para plantas solares fotovoltaicas en el norte de Ch
 ## 7. Tareas
 
 - **Explicabilidad**: prefiere código legible sobre código "listo".
+- **No subir nada al repositorio Remoto**: todos los cambios sobre el repositorio Git y GitHub son realizados manualmente.++
 
 ## 8. Datos geoespaciales — cuidados
 
