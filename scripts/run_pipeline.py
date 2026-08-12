@@ -16,6 +16,7 @@ from scripts.generate_suitability_map import main as generar_mapa_rf
 from scripts.profiles import main as generar_perfiles_ahp
 from scripts.generar_figuras_informe import main as generar_figuras_informe
 from scripts.validate_and_load_postgis import main as validar_postgis
+from scripts.run_cruce import main as cruzar_aptitud_rendimiento
 
 def _resolver_rutas(obj, base_dir: str):
     """Convierte recursivamente todas las rutas relativas del config a absolutas."""
@@ -166,6 +167,20 @@ def main():
     # --- Etapa 8: Validación de Coordenadas e Ingesta PostGIS ---
     print("\n--- Etapa 8: Validación de Coordenadas e Ingesta PostGIS ---")
     validar_postgis()
+
+    # --- Etapa 9: Cruce aptitud RF x rendimiento físico (solarpv-rs) ---
+    # Requiere el mapa de rendimiento (scripts/run_solar_yield.py, motor Rust compilado).
+    # Si no existe, run_cruce.main() se omite solo con un aviso y no rompe el pipeline.
+    print("\n--- Etapa 9: Cruce aptitud x rendimiento ---")
+    rendimiento_fijo = os.path.join(directorio_raiz,
+        config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
+        + '_fijo_specific_yield.tif')
+    salidas_cruce = [os.path.join(directorio_raiz, 'data/results/aptitud_x_rendimiento.tif'),
+                     os.path.join(directorio_raiz, 'data/results/rendimiento_en_aptas.tif')]
+    if os.path.exists(rendimiento_fijo) and _esta_actualizado([mapa_rf, rendimiento_fijo], salidas_cruce):
+        print("El cruce ya está actualizado. Se omite.")
+    else:
+        cruzar_aptitud_rendimiento()
 
     print("\nPipeline ejecutado correctamente.")
 
