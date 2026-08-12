@@ -1,13 +1,41 @@
 # GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile
 Problema. Identificar sitios óptimos para nuevas plantas fotovoltaicas en una región del norte de Chile mediante análisis multicriterio GIS, considerando irradiación, topografía, accesibilidad y restricciones.
 
+```
 git clone https://github.com/TinyAntu/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile.git
-
 pip install -r requirements.txt
-
-python scripts/run pipeline.py --config config.yaml.
+python scripts/run_pipeline.py --config config.yaml
+```
 
 Para descargar los datos por favor acceda a: https://drive.google.com/drive/folders/1ujkfnfOVDNQYJluZw06fFZAsKIZ-7T0z?usp=sharing
+
+## Reproducibilidad
+
+El pipeline es idempotente (chequeo incremental por etapa) y usa `random_state=42`. Para
+reproducir de cero:
+
+1. **Datos**: descargar desde el Drive de arriba y dejarlos en `data/` (ver rutas en
+   `config.yaml`; `data/` está en `.gitignore`).
+2. **Entorno Python**: `pip install -r requirements.txt` (versiones fijadas).
+3. **Pipeline base** (etapas 1–9): `python scripts/run_pipeline.py --config config.yaml`.
+   La Etapa 9 (cruce con rendimiento) se omite sola si aún no generaste el mapa del motor.
+4. **Motor Rust** (opcional, para rendimiento): ver sección siguiente. Commits exactos
+   usados para estos resultados:
+   - `solarpv-rs` @ `41cdaaf` — https://github.com/franciscoparrao/solarpv-rs
+   - `surtgis` @ `v1.2.2` (`4c60871`) — https://github.com/franciscoparrao/surtgis
+5. **Tests**: `python -m unittest discover -s tests`.
+
+Componentes y sus comando:
+
+| Componente | Comando |
+|---|---|
+| Pipeline base (aptitud, validación, cruce) | `python scripts/run_pipeline.py --config config.yaml` |
+| Rendimiento PV fijo / seguidor             | `python scripts/run_solar_yield.py [--mount tracker]` |
+| Cruce aptitud × rendimiento                | `python scripts/run_cruce.py --config config.yaml` |
+| Comparación fijo vs. seguidor              | `python scripts/run_comparacion_montaje.py` |
+| Explicabilidad SHAP                        | `python scripts/run_shap.py --config config.yaml` |
+| Assets del visor                           | `python scripts/generate_web_assets.py --config config.yaml` |
+| Visor web                                  | `streamlit run app/visor.py` |
 
 ## Motor de rendimiento fotovoltaico (solarpv-rs)
 
@@ -49,9 +77,9 @@ python scripts/generate_web_assets.py --config config.yaml   # crea app/assets/
 streamlit run app/visor.py                                    # visor local
 ```
 
-**Deploy en la nube (Streamlit Community Cloud), sin depender de localhost:**
+**Deploy en la nube (Streamlit Community Cloud)**
 1. Los assets de `app/assets/` (pocos MB) se versionan en el repo; los `.tif` pesados no
-   hacen falta en la nube.
+   hacen falta en entorno cloud.
 2. En share.streamlit.io: repo del proyecto, archivo principal `app/visor.py`.
 3. Usa `app/requirements.txt` (mínimo: streamlit/folium/streamlit-folium) para un build
    liviano — el visor no necesita las librerías geoespaciales del pipeline.
