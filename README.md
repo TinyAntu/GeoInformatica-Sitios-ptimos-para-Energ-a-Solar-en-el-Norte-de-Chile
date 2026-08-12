@@ -38,3 +38,20 @@ python scripts/run_solar_yield.py --dry-run                       # solo imprime
 
 Salida: `data/results/rendimiento_fijo_specific_yield.tif` (EPSG:32719), directamente
 comparable celda a celda con `data/results/mapa_probabilidad_aptitud.tif`.
+
+## Visor interactivo (demo)
+
+Mapa web con las capas de aptitud, rendimiento y su cruce superpuestas sobre un basemap.
+Los assets livianos (PNG + JSON) se generan a partir de los rasters de resultados:
+
+```
+python scripts/generate_web_assets.py --config config.yaml   # crea app/assets/
+streamlit run app/visor.py                                    # visor local
+```
+
+**Deploy en la nube (Streamlit Community Cloud), sin depender de localhost:**
+1. Los assets de `app/assets/` (pocos MB) se versionan en el repo; los `.tif` pesados no
+   hacen falta en la nube.
+2. En share.streamlit.io: repo del proyecto, archivo principal `app/visor.py`.
+3. Usa `app/requirements.txt` (mínimo: streamlit/folium/streamlit-folium) para un build
+   liviano — el visor no necesita las librerías geoespaciales del pipeline.

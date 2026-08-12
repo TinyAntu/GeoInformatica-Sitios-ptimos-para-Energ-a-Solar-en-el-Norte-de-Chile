@@ -1,0 +1,68 @@
+{
+  "aptitud": {
+    "png": "assets/aptitud.png",
+    "colorbar": "assets/aptitud_colorbar.png",
+    "bounds": [
+      [
+        -30.034118225841024,
+        -72.25395932279919
+      ],
+      [
+        -19.97447335862472,
+        -65.74585726146483
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Probabilidad de aptitud (0–1)",
+    "cmap": "viridis",
+    "tamano_px": [
+      936,
+      1600
+    ]
+  },
+  "rendimiento": {
+    "png": "assets/rendimiento.png",
+    "colorbar": "assets/rendimiento_colorbar.png",
+    "bounds": [
+      [
+        -30.03502068218564,
+        -72.2539887425898
+      ],
+      [
+        -19.97447335862472,
+        -65.74582784002305
+      ]
+    ],
+    "vmin": 1284.95,
+    "vmax": 1477.28,
+    "unidad": "Rendimiento (kWh/kWp/año)",
+    "cmap": "inferno",
+    "tamano_px": [
+      936,
+      1600
+    ]
+  },
+  "cruce": {
+    "png": "assets/cruce.png",
+    "colorbar": "assets/cruce_colorbar.png",
+    "bounds": [
+      [
+        -30.034118225841024,
+        -72.25395932279919
+      ],
+      [
+        -19.97447335862472,
+        -65.74585726146483
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Ranking aptitud × rendimiento (0–1)",
+    "cmap": "magma",
+    "tamano_px": [
+      936,
+      1600
+    ]
+  }
+}

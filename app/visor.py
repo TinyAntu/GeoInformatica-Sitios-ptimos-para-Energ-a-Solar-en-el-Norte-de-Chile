@@ -1,0 +1,143 @@
+"""Visor interactivo de resultados (T7) — Sitios óptimos para plantas solares.
+
+Mapa web (folium/Leaflet) con las capas de aptitud (RF), rendimiento físico (solarpv-rs)
+y su cruce superpuestas sobre un basemap, con control de capas, más paneles de
+estadísticas (T2/T3/T6). Lee únicamente `app/assets/` (PNG livianos + manifest + stats),
+por lo que funciona idéntico en local y en Streamlit Community Cloud, sin depender de los
+.tif pesados ni de un computador encendido.
+
+Ejecutar local:
+    streamlit run app/visor.py
+Regenerar los assets (tras recomputar los mapas):
+    python scripts/generate_web_assets.py --config config.yaml
+"""
+
+import os
+import json
+import base64
+
+import streamlit as st
+import folium
+from streamlit_folium import st_folium
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS = os.path.join(APP_DIR, "assets")
+
+st.set_page_config(page_title="Sitios óptimos para energía solar — Norte de Chile",
+                   layout="wide")
+
+
+@st.cache_data
+def _cargar_json(nombre):
+    ruta = os.path.join(ASSETS, nombre)
+    if not os.path.exists(ruta):
+        return {}
+    with open(ruta, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+@st.cache_data
+def _data_uri(png_rel):
+    """Codifica un PNG de assets como data URI (para que folium lo embeba sin servidor)."""
+    ruta = os.path.join(APP_DIR, png_rel)
+    with open(ruta, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+
+
+ETIQUETAS = {
+    "aptitud": "Aptitud (RF)",
+    "rendimiento": "Rendimiento (kWh/kWp/año)",
+    "cruce": "Cruce aptitud × rendimiento",
+}
+
+
+def main():
+    st.title("☀️ Sitios óptimos para plantas solares — Norte de Chile")
+    st.caption("Antofagasta y Atacama · Random Forest + AHP (dónde es apto) × solarpv-rs "
+               "(cuánto produce). CRS EPSG:32719.")
+
+    manifest = _cargar_json("manifest.json")
+    stats = _cargar_json("stats.json")
+
+    if not manifest:
+        st.error("No hay assets. Genera con: python scripts/generate_web_assets.py --config config.yaml")
+        return
+
+    # --- Controles ---
+    with st.sidebar:
+        st.header("Capas")
+        capas_activas = [cid for cid in manifest if st.checkbox(ETIQUETAS.get(cid, cid),
+                         value=(cid == "aptitud"))]
+        opacidad = st.slider("Opacidad", 0.0, 1.0, 0.75, 0.05)
+        st.divider()
+        st.caption("Fuente: proyecto Geoinformática USACH · datos: DEM SRTM, Explorador "
+                   "Solar, infraestructura eléctrica (Antofagasta/Atacama).")
+
+    # --- Mapa ---
+    col_mapa, col_info = st.columns([3, 1])
+    with col_mapa:
+        # Centro a partir de los bounds de cualquier capa.
+        (s, w), (n, e) = list(manifest.values())[0]["bounds"]
+        m = folium.Map(location=[(s + n) / 2, (w + e) / 2], zoom_start=6,
+                       tiles="CartoDB positron")
+        for cid in capas_activas:
+            capa = manifest[cid]
+            folium.raster_layers.ImageOverlay(
+                image=_data_uri(capa["png"]),
+                bounds=capa["bounds"],
+                opacity=opacidad,
+                name=ETIQUETAS.get(cid, cid),
+                interactive=False, cross_origin=False, zindex=1,
+            ).add_to(m)
+        folium.LayerControl(collapsed=False).add_to(m)
+        st_folium(m, width=None, height=620, returned_objects=[])
+
+    with col_info:
+        st.subheader("Leyenda")
+        for cid in capas_activas:
+            st.markdown(f"**{ETIQUETAS.get(cid, cid)}**")
+            st.image(os.path.join(APP_DIR, manifest[cid]["colorbar"]))
+
+    # --- Estadísticas (T2/T3/T6) ---
+    st.divider()
+    st.header("Resultados")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.subheader("Cruce aptitud × rendimiento (T2)")
+        cr = stats.get("cruce", {})
+        if cr:
+            st.metric("Celdas aptas", f"{cr.get('celdas_aptas', 0):,}",
+                      f"{cr.get('pct_aptas', 0)}% de la región")
+            r, a = cr.get("rendimiento_region", {}), cr.get("rendimiento_aptas", {})
+            st.write(f"Rendimiento medio región: **{r.get('media','–')}** kWh/kWp/año")
+            st.write(f"En zonas aptas: **{a.get('media','–')}** "
+                     f"(ganancia {cr.get('ganancia_aptas_pct','–')}%)")
+            st.caption("Aptitud y rendimiento casi desacoplados: el modelo decide por "
+                       "logística, no por energía.")
+
+    with c2:
+        st.subheader("Fijo vs. seguidor (T3)")
+        cm = stats.get("comparacion_montaje", {})
+        if cm:
+            f_, s_ = cm.get("rendimiento_fijo_aptas", {}), cm.get("rendimiento_seguidor_aptas", {})
+            st.metric("Ganancia del seguidor",
+                      f"{cm.get('ganancia_seguidor_media_pct','–')}%",
+                      f"ref. autor +{cm.get('referencia_autor_pct','–')}%")
+            st.write(f"Fijo: **{f_.get('media','–')}** · Seguidor: **{s_.get('media','–')}** kWh/kWp/año")
+
+    with c3:
+        st.subheader("Explicabilidad SHAP (T6)")
+        sh = stats.get("shap", {})
+        imps = sh.get("importancias_shap", [])
+        if imps:
+            for it in imps[:4]:
+                st.write(f"{it['feature']}: **{it['importancia_pct']}%**")
+            cruce = sh.get("cruce_rendimiento", {})
+            if "spearman_aptitud_vs_rendimiento" in cruce:
+                st.caption(f"Correlación aptitud–rendimiento: "
+                           f"{cruce['spearman_aptitud_vs_rendimiento']} (≈0 → desacople)")
+
+
+# Streamlit ejecuta este script en cada interacción; llamamos a main() directamente.
+main()

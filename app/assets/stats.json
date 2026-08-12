@@ -1,0 +1,108 @@
+{
+  "cruce": {
+    "umbral_probabilidad": 0.7,
+    "celdas_validas": 20184890,
+    "celdas_aptas": 582331,
+    "pct_aptas": 2.88,
+    "rendimiento_region": {
+      "n": 20184890,
+      "min": 247.7,
+      "media": 1393.2,
+      "p50": 1527.5,
+      "p90": 1916.4,
+      "max": 1967.1
+    },
+    "rendimiento_aptas": {
+      "n": 582331,
+      "min": 272.0,
+      "media": 1405.1,
+      "p50": 1529.3,
+      "p90": 1949.6,
+      "max": 1967.1
+    },
+    "ganancia_aptas_pct": 0.85,
+    "salidas": {
+      "rendimiento_en_aptas": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_en_aptas.tif",
+      "aptitud_x_rendimiento": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/aptitud_x_rendimiento.tif"
+    }
+  },
+  "comparacion_montaje": {
+    "umbral_probabilidad": 0.7,
+    "celdas_aptas": 582331,
+    "rendimiento_fijo_aptas": {
+      "n": 582331,
+      "min": 272.0,
+      "media": 1405.1,
+      "p50": 1529.3,
+      "p90": 1949.6,
+      "max": 1967.1
+    },
+    "rendimiento_seguidor_aptas": {
+      "n": 582331,
+      "min": 517.3,
+      "media": 2141.4,
+      "p50": 2184.6,
+      "p90": 2557.1,
+      "max": 2595.7
+    },
+    "ganancia_seguidor_media_pct": 52.41,
+    "ganancia_seguidor_mediana_celda_pct": 57.65,
+    "referencia_autor_pct": 36.0,
+    "interpretacion": "El seguidor de un eje rinde +52.4% sobre el montaje fijo en las zonas aptas. El perfil 'agresivo' (prioriza radiación/rendimiento) se beneficia más de esta ganancia; el 'conservador' (prioriza cercanía a infraestructura) la pondera contra el mayor CAPEX y mantenimiento del seguidor.",
+    "entradas": {
+      "fijo": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_fijo_specific_yield.tif",
+      "seguidor": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_seguidor_specific_yield.tif"
+    }
+  },
+  "shap": {
+    "n_muestras": 420,
+    "importancias_shap": [
+      {
+        "feature": "dist_subestaciones",
+        "importancia_pct": 45.05,
+        "shap_medio": -0.10968
+      },
+      {
+        "feature": "dist_transmision",
+        "importancia_pct": 30.5,
+        "shap_medio": -0.05539
+      },
+      {
+        "feature": "slope",
+        "importancia_pct": 12.1,
+        "shap_medio": -0.01623
+      },
+      {
+        "feature": "dist_almacen",
+        "importancia_pct": 4.42,
+        "shap_medio": -0.01223
+      },
+      {
+        "feature": "elev",
+        "importancia_pct": 3.93,
+        "shap_medio": -0.00818
+      },
+      {
+        "feature": "ghi",
+        "importancia_pct": 2.63,
+        "shap_medio": -0.00644
+      },
+      {
+        "feature": "northness",
+        "importancia_pct": 1.37,
+        "shap_medio": -0.00388
+      }
+    ],
+    "figuras": {
+      "bar": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_bar.png",
+      "beeswarm": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_beeswarm.png"
+    },
+    "cruce_rendimiento": {
+      "n_puntos": 420,
+      "spearman_aptitud_vs_rendimiento": 0.0573,
+      "pvalue": 0.2414,
+      "spearman_ghi_vs_rendimiento": -0.0084,
+      "interpretacion": "Correlación baja aptitud–rendimiento confirma el desacople de T2: el modelo no persigue la producción física. "
+    }
+  }
+}
