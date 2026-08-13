@@ -16,6 +16,7 @@
     "vmax": 1.0,
     "unidad": "Aptitud ML — probabilidad (0–1)",
     "cmap": "viridis",
+    "categorias": null,
     "tamano_px": [
       936,
       1600
@@ -38,6 +39,7 @@
     "vmax": 1.0,
     "unidad": "Aptitud conservador (0–1)",
     "cmap": "viridis",
+    "categorias": null,
     "tamano_px": [
       523,
       1600
@@ -60,6 +62,7 @@
     "vmax": 1.0,
     "unidad": "Aptitud agresivo (0–1)",
     "cmap": "viridis",
+    "categorias": null,
     "tamano_px": [
       523,
       1600
@@ -82,6 +85,7 @@
     "vmax": 1477.28,
     "unidad": "Rendimiento (kWh/kWp/año)",
     "cmap": "inferno",
+    "categorias": null,
     "tamano_px": [
       936,
       1600
@@ -104,6 +108,7 @@
     "vmax": 1.0,
     "unidad": "Ranking aptitud × rendimiento (0–1)",
     "cmap": "magma",
+    "categorias": null,
     "tamano_px": [
       936,
       1600
@@ -126,8 +131,40 @@
     "vmax": 3.0,
     "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)",
     "cmap": "RdYlGn",
+    "categorias": null,
     "tamano_px": [
       936,
+      1600
+    ]
+  },
+  "dominante": {
+    "png": "assets/dominante.png",
+    "colorbar": "assets/dominante_colorbar.png",
+    "bounds": [
+      [
+        -30.033215767988263,
+        -72.25392990434148
+      ],
+      [
+        -19.974457201003226,
+        -65.7448516018343
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 6.0,
+    "unidad": "Variable dominante (SHAP)",
+    "cmap": "tab10",
+    "categorias": [
+      "Pendiente",
+      "GHI",
+      "Elevación",
+      "Northness",
+      "Dist. transmisión",
+      "Dist. almacenam.",
+      "Dist. subestaciones"
+    ],
+    "tamano_px": [
+      937,
       1600
     ]
   }

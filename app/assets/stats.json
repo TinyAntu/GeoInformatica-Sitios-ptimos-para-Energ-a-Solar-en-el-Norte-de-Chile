@@ -136,5 +136,53 @@
     },
     "interpretacion": "El 2.42% de la zona válida es apta en los 3 perfiles (consenso: robusto ante la preferencia del stakeholder); 16.66% es apta solo en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado).",
     "salida_raster": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/consenso_perfiles.tif"
+  },
+  "shap_espacial": {
+    "resolucion_m": 500,
+    "n_pixeles": 810489,
+    "contribucion_media_shap": {
+      "slope": -0.043,
+      "ghi": -0.00767,
+      "elev": -0.0216,
+      "northness": -0.00343,
+      "dist_transmision": -0.10817,
+      "dist_almacen": -0.01959,
+      "dist_subestaciones": -0.21869
+    },
+    "pixeles_por_variable_dominante": {
+      "slope": 14937,
+      "ghi": 43,
+      "elev": 537,
+      "northness": 13,
+      "dist_transmision": 93935,
+      "dist_almacen": 1,
+      "dist_subestaciones": 701023
+    },
+    "leyenda_dominante": {
+      "0": "slope",
+      "1": "ghi",
+      "2": "elev",
+      "3": "northness",
+      "4": "dist_transmision",
+      "5": "dist_almacen",
+      "6": "dist_subestaciones"
+    },
+    "rasters": {
+      "slope": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_slope.tif",
+      "ghi": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_ghi.tif",
+      "elev": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_elev.tif",
+      "northness": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_northness.tif",
+      "dist_transmision": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_transmision.tif",
+      "dist_almacen": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_almacen.tif",
+      "dist_subestaciones": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_subestaciones.tif",
+      "dominante": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dominante.tif"
+    },
+    "waterfalls": [
+      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top1.png",
+      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top2.png",
+      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top3.png",
+      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top4.png",
+      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top5.png"
+    ]
   }
 }

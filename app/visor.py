@@ -51,6 +51,7 @@ ETIQUETAS = {
     "rendimiento": "Rendimiento (kWh/kWp/año)",
     "cruce": "Cruce aptitud × rendimiento",
     "consenso": "Consenso de perfiles",
+    "dominante": "Variable dominante (SHAP)",
 }
 
 # Agrupación de capas en el panel lateral (solo se muestran las presentes en el manifest).
@@ -60,6 +61,7 @@ GRUPOS = [
     ("Perfiles de aptitud", ["balanceado", "conservador", "agresivo"]),
     ("Consenso / divergencia", ["consenso"]),
     ("Producción física", ["rendimiento", "cruce"]),
+    ("Explicabilidad espacial (SHAP)", ["dominante"]),
 ]
 
 
@@ -169,6 +171,20 @@ def main():
         st.caption(f"Definición: 'apto' = top {100 - co['percentil_apto']}% de cada perfil. "
                    "Solo una fracción es consenso: dónde conviene depende del criterio "
                    "priorizado (conservador vs. agresivo).")
+
+    # --- Explicabilidad espacial SHAP (Brecha 8) ---
+    se = stats.get("shap_espacial", {})
+    dom = se.get("pixeles_por_variable_dominante", {})
+    if dom:
+        st.subheader("Variable dominante por píxel — SHAP espacial (Brecha 8)")
+        total = sum(dom.values()) or 1
+        top = sorted(dom.items(), key=lambda x: -x[1])[:3]
+        cols = st.columns(len(top))
+        for col, (feat, n) in zip(cols, top):
+            col.metric(feat, f"{100 * n / total:.1f}%", f"{n:,} px")
+        st.caption("Variable que más empuja la aptitud en cada píxel. La cercanía a "
+                   "infraestructura domina casi todo el territorio; el GHI casi nunca — "
+                   "explicación auditable pixel a pixel (argumento SEIA).")
 
 
 # Streamlit ejecuta este script en cada interacción; llamamos a main() directamente.

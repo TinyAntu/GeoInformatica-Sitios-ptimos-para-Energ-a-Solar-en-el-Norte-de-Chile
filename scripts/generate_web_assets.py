@@ -97,6 +97,26 @@ def _barra_color(cmap_name, vmin, vmax, unidad, out_path):
     plt.close(fig)
 
 
+def _barra_categorica(cmap_name, etiquetas, out_path):
+    """Leyenda discreta (swatch de color + etiqueta) para una capa categórica.
+
+    Usa la MISMA normalización que _colorear (color de la categoría i = cmap(i/(n-1))),
+    para que los colores de la leyenda coincidan con los del mapa.
+    """
+    n = len(etiquetas)
+    cmap = colormaps[cmap_name]
+    fig, ax = plt.subplots(figsize=(3.2, 0.34 * n))
+    for i, et in enumerate(etiquetas):
+        y = n - 1 - i
+        ax.add_patch(plt.Rectangle((0, y + 0.1), 0.5, 0.8, color=cmap(i / max(n - 1, 1))))
+        ax.text(0.65, y + 0.5, et, va="center", fontsize=8)
+    ax.set_xlim(0, 3.2)
+    ax.set_ylim(0, n)
+    ax.axis("off")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
+    plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Genera assets web (PNG+bounds) para el visor')
     parser.add_argument('--config', default='config.yaml')
@@ -125,6 +145,11 @@ def main():
         # Consenso/divergencia entre perfiles (Brecha 6, punto 4).
         {"id": "consenso", "ruta": "data/results/consenso_perfiles.tif",
          "cmap": "RdYlGn", "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)", "modo": "categorico"},
+        # Variable dominante por píxel según SHAP (Brecha 8). Orden = FEATURES.
+        {"id": "dominante", "ruta": "data/results/shap_espacial_dominante.tif",
+         "cmap": "tab10", "unidad": "Variable dominante (SHAP)", "modo": "categorias",
+         "categorias": ["Pendiente", "GHI", "Elevación", "Northness",
+                        "Dist. transmisión", "Dist. almacenam.", "Dist. subestaciones"]},
     ]
 
     assets_dir = _ruta_abs("app/assets")
@@ -138,8 +163,9 @@ def main():
             print(f"  [OMITIDA] {cid}: no existe {ruta}")
             continue
         print(f"  Procesando {cid} ({os.path.basename(ruta)})...")
-        # El consenso es categórico: nearest para no interpolar entre categorías.
-        resampling = Resampling.nearest if modo == "categorico" else Resampling.bilinear
+        # Los mapas categóricos se remuestrean con nearest (no interpolar entre categorías).
+        es_categorico = modo in ("categorico", "categorias")
+        resampling = Resampling.nearest if es_categorico else Resampling.bilinear
         arr, (sur, oeste, norte, este) = _reproyectar_para_web(src_path, resampling=resampling)
 
         valido = arr[np.isfinite(arr)]
@@ -148,13 +174,18 @@ def main():
             vmin, vmax = 0.0, 1.0
         elif modo == "categorico":
             vmin, vmax, oculta_menor_a = 1.0, 3.0, 1.0  # oculta el 0 (no apto)
+        elif modo == "categorias":
+            vmin, vmax = 0.0, float(len(capa["categorias"]) - 1)
         else:  # percentil: mejor contraste para el rendimiento
             vmin, vmax = float(np.percentile(valido, 2)), float(np.percentile(valido, 98))
 
         png = os.path.join(assets_dir, f"{cid}.png")
         cbar = os.path.join(assets_dir, f"{cid}_colorbar.png")
         _colorear(arr, cmap, vmin, vmax, png, oculta_menor_a=oculta_menor_a)
-        _barra_color(cmap, vmin, vmax, unidad, cbar)
+        if modo == "categorias":
+            _barra_categorica(cmap, capa["categorias"], cbar)
+        else:
+            _barra_color(cmap, vmin, vmax, unidad, cbar)
 
         manifest[cid] = {
             "png": f"assets/{cid}.png",
@@ -162,6 +193,7 @@ def main():
             "bounds": [[sur, oeste], [norte, este]],  # [[S,W],[N,E]] para folium
             "vmin": round(vmin, 2), "vmax": round(vmax, 2),
             "unidad": unidad, "cmap": cmap,
+            "categorias": capa.get("categorias"),
             "tamano_px": [arr.shape[1], arr.shape[0]],
         }
         print(f"    -> {png} ({os.path.getsize(png)//1024} KB), rango [{vmin:.2f}, {vmax:.2f}]")
@@ -178,6 +210,7 @@ def main():
         "comparacion_montaje": "data/results/comparacion_montaje.json",
         "shap": "data/results/shap_importancias.json",
         "consenso": "data/results/consenso_perfiles.json",
+        "shap_espacial": "data/results/shap_espacial.json",
     }
     for clave, ruta in fuentes.items():
         p = _ruta_abs(ruta)
