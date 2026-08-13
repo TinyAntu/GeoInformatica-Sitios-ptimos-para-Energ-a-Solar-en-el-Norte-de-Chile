@@ -17,25 +17,34 @@ reproducir de cero:
 1. **Datos**: descargar desde el Drive de arriba y dejarlos en `data/` (ver rutas en
    `config.yaml`; `data/` está en `.gitignore`).
 2. **Entorno Python**: `pip install -r requirements.txt` (versiones fijadas).
-3. **Pipeline base** (etapas 1–9): `python scripts/run_pipeline.py --config config.yaml`.
-   La Etapa 9 (cruce con rendimiento) se omite sola si aún no generaste el mapa del motor.
+3. **Pipeline base** (etapas 1–10): `python scripts/run_pipeline.py --config config.yaml`.
+   Incluye la Etapa 9 (cruce con rendimiento, se omite sola si aún no generaste el mapa
+   del motor) y la Etapa 10 (consenso entre perfiles).
 4. **Motor Rust** (opcional, para rendimiento): ver sección siguiente. Commits exactos
    usados para estos resultados:
    - `solarpv-rs` @ `41cdaaf` — https://github.com/franciscoparrao/solarpv-rs
    - `surtgis` @ `v1.2.2` (`4c60871`) — https://github.com/franciscoparrao/surtgis
 5. **Tests**: `python -m unittest discover -s tests`.
 
-Componentes y sus comando:
+Orden recomendado end-to-end (con motor): pipeline base → comparación de montaje →
+cruce → SHAP global → SHAP espacial → assets → visor. Los pasos de SHAP deben correr antes de generar los assets (el visor consume sus salidas).
 
 | Componente | Comando |
 |---|---|
-| Pipeline base (aptitud, validación, cruce) | `python scripts/run_pipeline.py --config config.yaml` |
+| Pipeline base (aptitud, validación, cruce, consenso) | `python scripts/run_pipeline.py --config config.yaml` |
 | Rendimiento PV fijo / seguidor             | `python scripts/run_solar_yield.py [--mount tracker]` |
-| Cruce aptitud × rendimiento                | `python scripts/run_cruce.py --config config.yaml` |
-| Comparación fijo vs. seguidor              | `python scripts/run_comparacion_montaje.py` |
-| Explicabilidad SHAP                        | `python scripts/run_shap.py --config config.yaml` |
+| Cruce aptitud × rendimiento (= Etapa 9)    | `python scripts/run_cruce.py --config config.yaml` |
+| Comparación fijo vs. seguidor              | `python scripts/run_comparacion_montaje.py [--regenerar]` |
+| Consenso entre perfiles (= Etapa 10)       | `python scripts/run_consenso.py --config config.yaml` |
+| Explicabilidad SHAP global                 | `python scripts/run_shap.py --config config.yaml` |
+| Explicabilidad SHAP espacial (Brecha 8)    | `python scripts/run_shap_spatial.py --config config.yaml` |
 | Assets del visor                           | `python scripts/generate_web_assets.py --config config.yaml` |
 | Visor web                                  | `streamlit run app/visor.py` |
+
+**Resoluciones configurables** (cuidado de editar la clave correcta):
+`solarpv.resolucion_m` (motor de rendimiento, 300 m; `null` = DEM nativo ~90 m, ~1 h por
+montaje considerando 12 núcleos — requiere `--regenerar`), `shap_espacial.resolucion_m` (500 m),
+`salida_mapa.resolucion_m` (mapa RF, 100 m), `preprocesamiento.dem_resolucion_m` (DEM base).
 
 ## Motor de rendimiento fotovoltaico (solarpv-rs)
 

@@ -83,7 +83,7 @@ criterios:
 
 # Preprocesamiento del DEM
 preprocesamiento:
-  dem_resolucion_m: null
+  dem_resolucion_m: 90
 
 # Parámetros de validación espacial (SBCV / LOROCV)
 validacion:
