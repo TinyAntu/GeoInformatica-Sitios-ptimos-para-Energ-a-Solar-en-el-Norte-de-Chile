@@ -1,10 +1,10 @@
 {
   "ratio_principal": 3,
   "auc_sbcv": 0.9684475442791974,
-  "brier_sbcv": 0.06512796733506518,
+  "brier_sbcv": 0.06512796733506519,
   "auc_split_aleatorio": 0.9728353140916807,
   "auc": 0.9728353140916807,
-  "brier_score": 0.060976226066358524,
+  "brier_score": 0.06097622606635854,
   "ratio_alt": 10,
   "auc_alt": 0.9734933035714285,
   "brier_score_alt": 0.04616877773200302,

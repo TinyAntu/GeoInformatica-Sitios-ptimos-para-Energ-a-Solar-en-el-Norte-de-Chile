@@ -17,6 +17,7 @@ from scripts.profiles import main as generar_perfiles_ahp
 from scripts.generar_figuras_informe import main as generar_figuras_informe
 from scripts.validate_and_load_postgis import main as validar_postgis
 from scripts.run_cruce import main as cruzar_aptitud_rendimiento
+from scripts.run_consenso import main as analizar_consenso_perfiles
 
 def _resolver_rutas(obj, base_dir: str):
     """Convierte recursivamente todas las rutas relativas del config a absolutas."""
@@ -181,6 +182,15 @@ def main():
         print("El cruce ya está actualizado. Se omite.")
     else:
         cruzar_aptitud_rendimiento()
+
+    # --- Etapa 10: Consenso vs. divergencia entre perfiles (Brecha 6) ---
+    print("\n--- Etapa 10: Consenso/divergencia entre perfiles ---")
+    perfiles_tif = [mapa_rf] + mapas_perfiles  # RF (balanceado) + conservador + agresivo
+    salida_consenso = [os.path.join(directorio_raiz, 'data/results/consenso_perfiles.tif')]
+    if _esta_actualizado(perfiles_tif, salida_consenso):
+        print("El consenso de perfiles ya está actualizado. Se omite.")
+    else:
+        analizar_consenso_perfiles()
 
     print("\nPipeline ejecutado correctamente.")
 

@@ -39,10 +39,10 @@ postgis_validation:
   schema: "public"
   connection:
     host: "localhost"
-    port: 5432
+    port: 5433              # contenedor postgis/postgis (el 5432 es postgres vanilla, sin PostGIS)
     dbname: "geoinformatica_db"
     user: "postgres"
-    password: ""
+    password: ""            # NO versionar la contraseña aquí: pásala por la variable de entorno PGPASSWORD
   bounds_utm:
     min_x: 100000.0
     max_x: 900000.0
@@ -83,7 +83,7 @@ criterios:
 
 # Preprocesamiento del DEM
 preprocesamiento:
-  dem_resolucion_m: 90
+  dem_resolucion_m: null
 
 # Parámetros de validación espacial (SBCV / LOROCV)
 validacion:
@@ -117,6 +117,12 @@ optuna_params:
   min_samples_leaf:
     min: 2
     max: 10
+
+# Consenso vs. divergencia entre perfiles (Brecha 6, punto 4). Un píxel es "apto" en un
+# perfil si está en el top (100-percentil)% de ese perfil (comparación relativa: los 3
+# perfiles están en escalas distintas). Consenso = apto en los 3; divergencia = en 1 o 2.
+consenso_perfiles:
+  percentil_apto: 90   # 90 => top 10% de cada perfil
 
 # Perfiles de inversión (pesos AHP/WLC). El perfil 'balanceado' se carga dinámicamente
 # desde los resultados del modelo ML.
