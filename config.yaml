@@ -118,6 +118,12 @@ optuna_params:
     min: 2
     max: 10
 
+# Explicabilidad espacial SHAP (Brecha 8). Grilla más gruesa que el mapa de aptitud porque
+# calcular SHAP por píxel es caro (500 m ≈ pocos min; 100 m = decenas de millones de píxeles).
+shap_espacial:
+  resolucion_m: 500
+  top_sitios: 5
+
 # Consenso vs. divergencia entre perfiles (Brecha 6, punto 4). Un píxel es "apto" en un
 # perfil si está en el top (100-percentil)% de ese perfil (comparación relativa: los 3
 # perfiles están en escalas distintas). Consenso = apto en los 3; divergencia = en 1 o 2.
