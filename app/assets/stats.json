@@ -104,5 +104,37 @@
       "spearman_ghi_vs_rendimiento": -0.0084,
       "interpretacion": "Correlación baja aptitud–rendimiento confirma el desacople de T2: el modelo no persigue la producción física. "
     }
+  },
+  "consenso": {
+    "percentil_apto": 90,
+    "umbrales_por_perfil": {
+      "conservador": 0.8882,
+      "balanceado": 0.2197,
+      "agresivo": 0.8562
+    },
+    "celdas_validas": 20175751,
+    "apto_por_perfil": {
+      "conservador": 2017578,
+      "balanceado": 2017578,
+      "agresivo": 2017580
+    },
+    "consenso_3_perfiles": {
+      "celdas": 487509,
+      "pct": 2.42
+    },
+    "divergencia_2_perfiles": {
+      "celdas": 1228418,
+      "pct": 6.09
+    },
+    "divergencia_1_perfil": {
+      "celdas": 2133373,
+      "pct": 10.57
+    },
+    "no_apto": {
+      "celdas": 16326451,
+      "pct": 80.92
+    },
+    "interpretacion": "El 2.42% de la zona válida es apta en los 3 perfiles (consenso: robusto ante la preferencia del stakeholder); 16.66% es apta solo en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado).",
+    "salida_raster": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/consenso_perfiles.tif"
   }
 }

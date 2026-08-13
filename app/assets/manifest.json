@@ -1,7 +1,7 @@
 {
-  "aptitud": {
-    "png": "assets/aptitud.png",
-    "colorbar": "assets/aptitud_colorbar.png",
+  "balanceado": {
+    "png": "assets/balanceado.png",
+    "colorbar": "assets/balanceado_colorbar.png",
     "bounds": [
       [
         -30.034118225841024,
@@ -14,10 +14,54 @@
     ],
     "vmin": 0.0,
     "vmax": 1.0,
-    "unidad": "Probabilidad de aptitud (0–1)",
+    "unidad": "Aptitud ML — probabilidad (0–1)",
     "cmap": "viridis",
     "tamano_px": [
       936,
+      1600
+    ]
+  },
+  "conservador": {
+    "png": "assets/conservador.png",
+    "colorbar": "assets/conservador_colorbar.png",
+    "bounds": [
+      [
+        -56.31361146171775,
+        -80.81546778357567
+      ],
+      [
+        -17.242467701342743,
+        -64.174695001404
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Aptitud conservador (0–1)",
+    "cmap": "viridis",
+    "tamano_px": [
+      523,
+      1600
+    ]
+  },
+  "agresivo": {
+    "png": "assets/agresivo.png",
+    "colorbar": "assets/agresivo_colorbar.png",
+    "bounds": [
+      [
+        -56.31361146171775,
+        -80.81546778357567
+      ],
+      [
+        -17.242467701342743,
+        -64.174695001404
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Aptitud agresivo (0–1)",
+    "cmap": "viridis",
+    "tamano_px": [
+      523,
       1600
     ]
   },
@@ -60,6 +104,28 @@
     "vmax": 1.0,
     "unidad": "Ranking aptitud × rendimiento (0–1)",
     "cmap": "magma",
+    "tamano_px": [
+      936,
+      1600
+    ]
+  },
+  "consenso": {
+    "png": "assets/consenso.png",
+    "colorbar": "assets/consenso_colorbar.png",
+    "bounds": [
+      [
+        -30.034118225841024,
+        -72.25395932279919
+      ],
+      [
+        -19.97447335862472,
+        -65.74585726146483
+      ]
+    ],
+    "vmin": 1.0,
+    "vmax": 3.0,
+    "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)",
+    "cmap": "RdYlGn",
     "tamano_px": [
       936,
       1600

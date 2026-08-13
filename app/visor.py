@@ -45,10 +45,22 @@ def _data_uri(png_rel):
 
 
 ETIQUETAS = {
-    "aptitud": "Aptitud (RF)",
+    "balanceado": "Aptitud balanceado ML",
+    "conservador": "Aptitud perfil conservador",
+    "agresivo": "Aptitud perfil agresivo",
     "rendimiento": "Rendimiento (kWh/kWp/año)",
     "cruce": "Cruce aptitud × rendimiento",
+    "consenso": "Consenso de perfiles",
 }
+
+# Agrupación de capas en el panel lateral (solo se muestran las presentes en el manifest).
+# Los perfiles de aptitud y el mapa de consenso van en secciones separadas pero adyacentes
+# (ambos responden "dónde", son comparables); la producción física va aparte.
+GRUPOS = [
+    ("Perfiles de aptitud", ["balanceado", "conservador", "agresivo"]),
+    ("Consenso / divergencia", ["consenso"]),
+    ("Producción física", ["rendimiento", "cruce"]),
+]
 
 
 def main():
@@ -66,8 +78,15 @@ def main():
     # --- Controles ---
     with st.sidebar:
         st.header("Capas")
-        capas_activas = [cid for cid in manifest if st.checkbox(ETIQUETAS.get(cid, cid),
-                         value=(cid == "aptitud"))]
+        capas_activas = []
+        for titulo, ids in GRUPOS:
+            presentes = [cid for cid in ids if cid in manifest]
+            if not presentes:
+                continue
+            st.caption(titulo)
+            for cid in presentes:
+                if st.checkbox(ETIQUETAS.get(cid, cid), value=(cid == "balanceado")):
+                    capas_activas.append(cid)
         opacidad = st.slider("Opacidad", 0.0, 1.0, 0.75, 0.05)
         st.divider()
         st.caption("Fuente: proyecto Geoinformática USACH · datos: DEM SRTM, Explorador "
@@ -137,6 +156,19 @@ def main():
             if "spearman_aptitud_vs_rendimiento" in cruce:
                 st.caption(f"Correlación aptitud–rendimiento: "
                            f"{cruce['spearman_aptitud_vs_rendimiento']} (≈0 → desacople)")
+
+    # --- Consenso entre perfiles (Brecha 6) ---
+    co = stats.get("consenso", {})
+    if co:
+        st.subheader("Consenso vs. divergencia entre perfiles (Brecha 6)")
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Consenso (3 perfiles)", f"{co['consenso_3_perfiles']['pct']}%",
+                  "aptas en los 3 → robustas")
+        k2.metric("Divergencia (2 perfiles)", f"{co['divergencia_2_perfiles']['pct']}%")
+        k3.metric("Divergencia (1 perfil)", f"{co['divergencia_1_perfil']['pct']}%")
+        st.caption(f"Definición: 'apto' = top {100 - co['percentil_apto']}% de cada perfil. "
+                   "Solo una fracción es consenso: dónde conviene depende del criterio "
+                   "priorizado (conservador vs. agresivo).")
 
 
 # Streamlit ejecuta este script en cada interacción; llamamos a main() directamente.

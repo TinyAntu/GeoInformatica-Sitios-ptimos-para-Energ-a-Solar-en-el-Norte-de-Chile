@@ -38,7 +38,7 @@ def _ruta_abs(ruta: str) -> str:
     return ruta if os.path.isabs(ruta) else os.path.join(directorio_raiz, ruta)
 
 
-def _reproyectar_para_web(src_path):
+def _reproyectar_para_web(src_path, resampling=Resampling.bilinear):
     """Reproyecta un raster a Web Mercator (EPSG:3857) remuestreado a MAX_PX.
 
     Se usa 3857 —no 4326— porque folium/Leaflet coloca el ImageOverlay estirándolo
@@ -62,19 +62,25 @@ def _reproyectar_para_web(src_path):
             source=rasterio.band(src, 1), destination=destino,
             src_transform=src.transform, src_crs=src.crs, src_nodata=src.nodata,
             dst_transform=dst_transform, dst_crs="EPSG:3857", dst_nodata=np.nan,
-            resampling=Resampling.bilinear,
+            resampling=resampling,
         )
     # Bounds lat/lon (esquinas de la caja 3857) para folium: [[S,W],[N,E]].
     oeste, sur, este, norte = transform_bounds("EPSG:3857", "EPSG:4326", w_m, s_m, e_m, n_m)
     return destino, (sur, oeste, norte, este)
 
 
-def _colorear(arr, cmap_name, vmin, vmax, png_path):
-    """Colorea un array con un colormap (nodata/NaN transparente) y guarda PNG RGBA."""
+def _colorear(arr, cmap_name, vmin, vmax, png_path, oculta_menor_a=None):
+    """Colorea un array con un colormap (nodata/NaN transparente) y guarda PNG RGBA.
+
+    `oculta_menor_a`: si se indica, las celdas válidas con valor < ese umbral quedan
+    transparentes (se usa para el consenso: ocultar el 'no apto' = 0 y resaltar 1–3).
+    """
     valido = np.isfinite(arr)
     norm = np.clip((arr - vmin) / max(vmax - vmin, 1e-9), 0, 1)
     rgba = (colormaps[cmap_name](norm) * 255).astype(np.uint8)
     rgba[~valido, 3] = 0  # transparencia en nodata
+    if oculta_menor_a is not None:
+        rgba[valido & (arr < oculta_menor_a), 3] = 0
     Image.fromarray(rgba, mode="RGBA").save(png_path)
 
 
@@ -101,37 +107,53 @@ def main():
 
     prefijo = config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
 
-    # Definición de capas: (id, ruta, colormap, unidad, modo de rango)
+    # Definición de capas. modo: 'fijo01' (0–1), 'percentil' (contraste p2–p98),
+    # 'categorico' (consenso 0–3, oculta el 0 = no apto y usa resampleo nearest).
     capas = [
-        ("aptitud", "data/results/mapa_probabilidad_aptitud.tif", "viridis",
-         "Probabilidad de aptitud (0–1)", "fijo01"),
-        ("rendimiento", prefijo + "_fijo_specific_yield.tif", "inferno",
-         "Rendimiento (kWh/kWp/año)", "percentil"),
-        ("cruce", "data/results/aptitud_x_rendimiento.tif", "magma",
-         "Ranking aptitud × rendimiento (0–1)", "fijo01"),
+        # Los 3 perfiles de aptitud (Brecha 6).
+        {"id": "balanceado", "ruta": "data/results/mapa_probabilidad_aptitud.tif",
+         "cmap": "viridis", "unidad": "Aptitud ML — probabilidad (0–1)", "modo": "fijo01"},
+        {"id": "conservador", "ruta": "data/results/aptitud_conservador.tif",
+         "cmap": "viridis", "unidad": "Aptitud conservador (0–1)", "modo": "fijo01"},
+        {"id": "agresivo", "ruta": "data/results/aptitud_agresivo.tif",
+         "cmap": "viridis", "unidad": "Aptitud agresivo (0–1)", "modo": "fijo01"},
+        # Producción física y cruce.
+        {"id": "rendimiento", "ruta": prefijo + "_fijo_specific_yield.tif",
+         "cmap": "inferno", "unidad": "Rendimiento (kWh/kWp/año)", "modo": "percentil"},
+        {"id": "cruce", "ruta": "data/results/aptitud_x_rendimiento.tif",
+         "cmap": "magma", "unidad": "Ranking aptitud × rendimiento (0–1)", "modo": "fijo01"},
+        # Consenso/divergencia entre perfiles (Brecha 6, punto 4).
+        {"id": "consenso", "ruta": "data/results/consenso_perfiles.tif",
+         "cmap": "RdYlGn", "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)", "modo": "categorico"},
     ]
 
     assets_dir = _ruta_abs("app/assets")
     os.makedirs(assets_dir, exist_ok=True)
     manifest = {}
 
-    for cid, ruta, cmap, unidad, modo in capas:
+    for capa in capas:
+        cid, ruta, cmap, unidad, modo = capa["id"], capa["ruta"], capa["cmap"], capa["unidad"], capa["modo"]
         src_path = _ruta_abs(ruta)
         if not os.path.exists(src_path):
             print(f"  [OMITIDA] {cid}: no existe {ruta}")
             continue
         print(f"  Procesando {cid} ({os.path.basename(ruta)})...")
-        arr, (sur, oeste, norte, este) = _reproyectar_para_web(src_path)
+        # El consenso es categórico: nearest para no interpolar entre categorías.
+        resampling = Resampling.nearest if modo == "categorico" else Resampling.bilinear
+        arr, (sur, oeste, norte, este) = _reproyectar_para_web(src_path, resampling=resampling)
 
         valido = arr[np.isfinite(arr)]
+        oculta_menor_a = None
         if modo == "fijo01":
             vmin, vmax = 0.0, 1.0
+        elif modo == "categorico":
+            vmin, vmax, oculta_menor_a = 1.0, 3.0, 1.0  # oculta el 0 (no apto)
         else:  # percentil: mejor contraste para el rendimiento
             vmin, vmax = float(np.percentile(valido, 2)), float(np.percentile(valido, 98))
 
         png = os.path.join(assets_dir, f"{cid}.png")
         cbar = os.path.join(assets_dir, f"{cid}_colorbar.png")
-        _colorear(arr, cmap, vmin, vmax, png)
+        _colorear(arr, cmap, vmin, vmax, png, oculta_menor_a=oculta_menor_a)
         _barra_color(cmap, vmin, vmax, unidad, cbar)
 
         manifest[cid] = {
@@ -155,6 +177,7 @@ def main():
         "cruce": "data/results/cruce_aptitud_rendimiento.json",
         "comparacion_montaje": "data/results/comparacion_montaje.json",
         "shap": "data/results/shap_importancias.json",
+        "consenso": "data/results/consenso_perfiles.json",
     }
     for clave, ruta in fuentes.items():
         p = _ruta_abs(ruta)
