@@ -27,11 +27,24 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import colormaps
+from matplotlib.colors import ListedColormap
 from PIL import Image
 
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 MAX_PX = 1600  # lado máximo del PNG de salida (compromiso nitidez/tamaño)
+
+# Paleta Okabe & Ito (2008): colores categóricos distinguibles para las formas más comunes
+# de daltonismo (deuteranopia/protanopia). Se usa para la capa "dominante" (7 categorías
+# nominales); reemplaza a tab10, cuyos pares rojo/verde/marrón son poco distinguibles.
+# Mismo orden (empezando en naranja, sin negro) que en generar_figuras_informe.py, para que
+# la figura estática y la capa del visor usen exactamente los mismos colores por variable.
+# Nombre propio ("okabe_ito_gs") porque matplotlib >=3.11 ya trae un cmap builtin "okabe_ito"
+# (con negro como primer color) que no se puede re-registrar.
+OKABE_ITO = ['#E69F00', '#56B4E9', '#009E73', '#F0E442',
+            '#0072B2', '#D55E00', '#CC79A7']
+if 'okabe_ito_gs' not in colormaps:
+    colormaps.register(ListedColormap(OKABE_ITO, name='okabe_ito_gs'), name='okabe_ito_gs')
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -142,12 +155,14 @@ def main():
          "cmap": "inferno", "unidad": "Rendimiento (kWh/kWp/año)", "modo": "percentil"},
         {"id": "cruce", "ruta": "data/results/aptitud_x_rendimiento.tif",
          "cmap": "magma", "unidad": "Ranking aptitud × rendimiento (0–1)", "modo": "fijo01"},
-        # Consenso/divergencia entre perfiles (Brecha 6, punto 4).
+        # Consenso/divergencia entre perfiles (Brecha 6, punto 4). cividis: secuencial y
+        # ordinal, apta para daltonismo (reemplaza RdYlGn, ilegible en rojo-verde).
         {"id": "consenso", "ruta": "data/results/consenso_perfiles.tif",
-         "cmap": "RdYlGn", "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)", "modo": "categorico"},
+         "cmap": "cividis", "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)", "modo": "categorico"},
         # Variable dominante por píxel según SHAP (Brecha 8). Orden = FEATURES.
+        # Okabe-Ito: categórica nominal, apta para daltonismo (reemplaza tab10).
         {"id": "dominante", "ruta": "data/results/shap_espacial_dominante.tif",
-         "cmap": "tab10", "unidad": "Variable dominante (SHAP)", "modo": "categorias",
+         "cmap": "okabe_ito_gs", "unidad": "Variable dominante (SHAP)", "modo": "categorias",
          "categorias": ["Pendiente", "GHI", "Elevación", "Northness",
                         "Dist. transmisión", "Dist. almacenam.", "Dist. subestaciones"]},
     ]
