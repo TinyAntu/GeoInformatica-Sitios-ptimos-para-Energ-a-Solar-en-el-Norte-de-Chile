@@ -19,12 +19,24 @@ import base64
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
+from branca.element import MacroElement, Element
+from jinja2 import Template
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(APP_DIR, "assets")
 
 st.set_page_config(page_title="Sitios óptimos para energía solar — Norte de Chile",
                    layout="wide")
+
+st.markdown("""
+<style>
+    [data-testid="stCaptionContainer"], [data-testid="stMarkdownContainer"],
+    [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {
+        color: inherit !important;
+    }
+    .pie-cartografico { color: var(--text-color); font-size: 0.78rem; }
+</style>
+""", unsafe_allow_html=True)
 
 
 @st.cache_data
@@ -39,9 +51,17 @@ def _cargar_json(nombre):
 @st.cache_data
 def _data_uri(png_rel):
     """Codifica un PNG de assets como data URI (para que folium lo embeba sin servidor)."""
-    ruta = os.path.join(APP_DIR, png_rel)
+    ruta = _ruta_asset(png_rel)
     with open(ruta, "rb") as f:
         return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+
+
+def _ruta_asset(ruta_rel):
+    """Resuelve rutas del manifest tanto si incluyen ``assets/`` como si no."""
+    ruta = os.path.join(APP_DIR, ruta_rel)
+    if os.path.exists(ruta):
+        return ruta
+    return os.path.join(ASSETS, os.path.basename(ruta_rel))
 
 
 ETIQUETAS = {
@@ -63,6 +83,42 @@ GRUPOS = [
     ("Producción física", ["rendimiento", "cruce"]),
     ("Explicabilidad espacial (SHAP)", ["dominante"]),
 ]
+
+
+class ControlCartografico(MacroElement):
+        """Añade escala métrica y una flecha de norte al mapa Leaflet."""
+
+        _template = Template("""
+                {% macro script(this, kwargs) %}
+                        L.control.scale({imperial: false, metric: true, maxWidth: 150}).addTo({{this._parent.get_name()}});
+                    var controlNorte = L.control({position: 'topright'});
+                    controlNorte.onAdd = function() {
+                                var control = L.DomUtil.create('div', 'control-norte');
+                                control.innerHTML = '<div class="flecha-norte">&#8593;</div><div>N</div>';
+                                return control;
+                    };
+                    controlNorte.addTo({{this._parent.get_name()}});
+                {% endmacro %}
+        """)
+
+
+def _agregar_estilos_mapa(mapa):
+        estilos = """
+        <style>
+            .control-norte { background: rgba(255,255,255,.88); color: #17202a;
+                padding: 5px 8px; text-align: center; font-weight: 700; border-radius: 3px;
+                box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+            .flecha-norte { font-size: 24px; line-height: 20px; }
+            .leaflet-control-scale-line { background: rgba(255,255,255,.82); color: #17202a;
+                border-color: #17202a; }
+            @media (prefers-color-scheme: dark) {
+                .control-norte, .leaflet-control-scale-line { background: rgba(35,40,45,.9);
+                    color: #f4f6f7; border-color: #f4f6f7; }
+            }
+        </style>
+        """
+        mapa.get_root().html.add_child(Element(estilos))
+        mapa.add_child(ControlCartografico())
 
 
 def main():
@@ -101,6 +157,7 @@ def main():
         (s, w), (n, e) = list(manifest.values())[0]["bounds"]
         m = folium.Map(location=[(s + n) / 2, (w + e) / 2], zoom_start=6,
                        tiles="CartoDB positron")
+        _agregar_estilos_mapa(m)
         for cid in capas_activas:
             capa = manifest[cid]
             folium.raster_layers.ImageOverlay(
@@ -112,12 +169,23 @@ def main():
             ).add_to(m)
         folium.LayerControl(collapsed=False).add_to(m)
         st_folium(m, width=None, height=620, returned_objects=[])
+        st.markdown(
+            '<div class="pie-cartografico">Sistema de referencia: EPSG:32719 (WGS 84 / UTM 19S) · '
+            'Norte arriba · Escala métrica dinámica</div>',
+            unsafe_allow_html=True,
+        )
 
     with col_info:
         st.subheader("Leyenda")
         for cid in capas_activas:
-            st.markdown(f"**{ETIQUETAS.get(cid, cid)}**")
-            st.image(os.path.join(APP_DIR, manifest[cid]["colorbar"]))
+            unidad = manifest[cid].get("unidad", "")
+            vmin, vmax = manifest[cid].get("vmin"), manifest[cid].get("vmax")
+            rango = f"Rango: {vmin:g}–{vmax:g}" if vmin is not None and vmax is not None else ""
+            st.markdown(f"**{ETIQUETAS.get(cid, cid)}**  \n{unidad}  \n{rango}")
+            st.image(_ruta_asset(manifest[cid]["colorbar"]))
+            categorias = manifest[cid].get("categorias") or []
+            if categorias:
+                st.markdown(" · ".join(categorias))
 
     # --- Estadísticas (T2/T3/T6) ---
     st.divider()

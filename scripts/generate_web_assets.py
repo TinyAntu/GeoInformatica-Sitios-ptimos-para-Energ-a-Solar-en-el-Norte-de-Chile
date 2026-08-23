@@ -51,7 +51,7 @@ def _ruta_abs(ruta: str) -> str:
     return ruta if os.path.isabs(ruta) else os.path.join(directorio_raiz, ruta)
 
 
-def _reproyectar_para_web(src_path, resampling=Resampling.bilinear):
+def _reproyectar_para_web(src_path, resampling=Resampling.bilinear, clip_mask_path=None):
     """Reproyecta un raster a Web Mercator (EPSG:3857) remuestreado a MAX_PX.
 
     Se usa 3857 —no 4326— porque folium/Leaflet coloca el ImageOverlay estirándolo
@@ -77,6 +77,20 @@ def _reproyectar_para_web(src_path, resampling=Resampling.bilinear):
             dst_transform=dst_transform, dst_crs="EPSG:3857", dst_nodata=np.nan,
             resampling=resampling,
         )
+        if clip_mask_path is not None:
+            # El motor PV trabaja sobre el DEM completo; heredar la máscara de
+            # aptitud evita mostrar rendimiento fuera de las regiones estudiadas.
+            with rasterio.open(clip_mask_path) as mascara:
+                datos_mascara = mascara.read(1, masked=True)
+                mascara_valida = ~np.ma.getmaskarray(datos_mascara)
+                mascara_destino = np.zeros((height, width), dtype=np.uint8)
+                reproject(
+                    source=mascara_valida.astype(np.uint8), destination=mascara_destino,
+                    src_transform=mascara.transform, src_crs=mascara.crs,
+                    src_nodata=0, dst_transform=dst_transform, dst_crs="EPSG:3857",
+                    dst_nodata=0, resampling=Resampling.nearest,
+                )
+                destino[mascara_destino == 0] = np.nan
     # Bounds lat/lon (esquinas de la caja 3857) para folium: [[S,W],[N,E]].
     oeste, sur, este, norte = transform_bounds("EPSG:3857", "EPSG:4326", w_m, s_m, e_m, n_m)
     return destino, (sur, oeste, norte, este)
@@ -103,8 +117,7 @@ def _barra_color(cmap_name, vmin, vmax, unidad, out_path):
     grad = np.linspace(0, 1, 256).reshape(1, -1)
     ax.imshow(grad, aspect="auto", cmap=cmap_name, extent=[vmin, vmax, 0, 1])
     ax.set_yticks([])
-    ax.set_xlabel(unidad, fontsize=8)
-    ax.tick_params(labelsize=7)
+    ax.set_xticks([])
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close(fig)
@@ -122,10 +135,10 @@ def _barra_categorica(cmap_name, etiquetas, out_path):
     for i, et in enumerate(etiquetas):
         y = n - 1 - i
         ax.add_patch(plt.Rectangle((0, y + 0.1), 0.5, 0.8, color=cmap(i / max(n - 1, 1))))
-        ax.text(0.65, y + 0.5, et, va="center", fontsize=8)
-    ax.set_xlim(0, 3.2)
+    ax.set_xlim(0, 0.5)
     ax.set_ylim(0, n)
-    ax.axis("off")
+    ax.set_xticks([])
+    ax.set_yticks([])
     fig.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close(fig)
 
@@ -181,7 +194,12 @@ def main():
         # Los mapas categóricos se remuestrean con nearest (no interpolar entre categorías).
         es_categorico = modo in ("categorico", "categorias")
         resampling = Resampling.nearest if es_categorico else Resampling.bilinear
-        arr, (sur, oeste, norte, este) = _reproyectar_para_web(src_path, resampling=resampling)
+        mascara = None
+        if cid == "rendimiento":
+            mascara = _ruta_abs("data/results/mapa_probabilidad_aptitud.tif")
+        arr, (sur, oeste, norte, este) = _reproyectar_para_web(
+            src_path, resampling=resampling, clip_mask_path=mascara,
+        )
 
         valido = arr[np.isfinite(arr)]
         oculta_menor_a = None
