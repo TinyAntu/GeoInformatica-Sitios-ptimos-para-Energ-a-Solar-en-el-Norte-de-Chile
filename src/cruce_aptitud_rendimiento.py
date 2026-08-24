@@ -28,6 +28,7 @@ import json
 import numpy as np
 import rasterio
 from rasterio.warp import reproject, Resampling
+from scipy.stats import spearmanr
 
 NODATA = -9999.0
 
@@ -43,7 +44,7 @@ def _alinear_rendimiento(rendimiento_path, base):
         reproject(
             source=rasterio.band(ren, 1),
             destination=destino,
-            src_transform=ren.transform, src_crs=ren.crs,
+            src_transform=ren.transform, src_crs=ren.crs, src_nodata=ren.nodata,
             dst_transform=base.transform, dst_crs=base.crs,
             resampling=Resampling.bilinear,
             dst_nodata=np.nan,
@@ -83,6 +84,20 @@ def cruzar(aptitud_path, rendimiento_path, umbral,
     ranking = np.full(aptitud.shape, NODATA, dtype=np.float32)
     ranking[base_valida] = (aptitud[base_valida] * yield_norm[base_valida]).astype(np.float32)
 
+    # --- Análisis de sensibilidad de la fórmula de combinación ---
+    # El producto es una decisión de diseño justificada solo narrativamente (ver docstring),
+    # a diferencia de los pesos AHP del proyecto (derivados formalmente con Ratio de
+    # Consistencia de Saaty, ver src/ahp.py). Se contrasta contra una alternativa razonable
+    # (media aritmética ponderada 50/50) para reportar cuán sensible es el ranking a esta
+    # elección — no para reemplazar la fórmula, sino para que quede auditable en el informe.
+    ranking_prod = ranking[base_valida]
+    ranking_media = 0.5 * aptitud[base_valida] + 0.5 * yield_norm[base_valida]
+    rho_formula, _ = spearmanr(ranking_prod, ranking_media)
+    k_top = max(1, int(round(0.01 * base_valida.sum())))  # top 1% de las celdas válidas
+    top_prod = set(np.argsort(ranking_prod)[-k_top:].tolist())
+    top_media = set(np.argsort(ranking_media)[-k_top:].tolist())
+    overlap_top1pct_pct = round(100.0 * len(top_prod & top_media) / k_top, 1)
+
     # --- Escribir GeoTIFFs (mismo perfil que la aptitud) ---
     meta.update(dtype=rasterio.float32, count=1, nodata=NODATA)
     for path, data in ((out_en_aptas, en_aptas), (out_ranking, ranking)):
@@ -102,6 +117,18 @@ def cruzar(aptitud_path, rendimiento_path, umbral,
         "rendimiento_aptas": _resumen(y_aptas) if aptas.any() else None,
         "ganancia_aptas_pct": (round(float(100.0 * (y_aptas.mean() / y_region.mean() - 1)), 2)
                                if aptas.any() else None),
+        "sensibilidad_formula_combinacion": {
+            "formula_usada": "producto: probabilidad_RF * yield_norm",
+            "alternativa": "media aritmética ponderada 50/50",
+            "spearman_ranking_vs_alternativa": round(float(rho_formula), 4),
+            "overlap_top_1pct_pct": overlap_top1pct_pct,
+            "nota": (
+                "Si el spearman y el overlap son altos, el ranking (y los top-N sitios que se "
+                "reporten) son robustos a esta elección de fórmula; si son bajos, la elección "
+                "de 'producto' pesa más de lo que parece y debería justificarse con más "
+                "alternativas antes de presentarse como definitiva."
+            ),
+        },
         "salidas": {"rendimiento_en_aptas": out_en_aptas, "aptitud_x_rendimiento": out_ranking},
     }
     os.makedirs(os.path.dirname(out_json) or ".", exist_ok=True)

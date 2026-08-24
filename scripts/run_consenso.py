@@ -53,6 +53,12 @@ def main():
           f"({stats['consenso_3_perfiles']['pct']}%)")
     print(f"  Divergencia (2 perfiles): {stats['divergencia_2_perfiles']['pct']}% | "
           f"(1 perfil): {stats['divergencia_1_perfil']['pct']}%")
+    corr = stats.get('correlacion_rango_entre_perfiles', {})
+    if corr:
+        print(f"  Correlación de rango (Spearman) entre perfiles: "
+              f"cons-bal={corr['conservador_vs_balanceado']} | "
+              f"cons-agr={corr['conservador_vs_agresivo']} | "
+              f"bal-agr={corr['balanceado_vs_agresivo']}")
     print(f"  Salidas: {os.path.basename(out_raster)}, {os.path.basename(out_json)}")
     return 0
 

@@ -22,6 +22,7 @@ import json
 import numpy as np
 import rasterio
 from rasterio.warp import reproject, Resampling
+from scipy.stats import spearmanr
 
 NODATA = -9999.0
 
@@ -87,6 +88,25 @@ def analizar_consenso(base_path, conservador_path, agresivo_path, percentil,
     def _pct(x):
         return round(100.0 * x / total, 2)
 
+    # --- Correlación de rango entre perfiles (complementa el solapamiento binario top-K) ---
+    # El umbral relativo por percentil fija, POR CONSTRUCCIÓN, la misma proporción de área
+    # "apta" en los 3 perfiles (p. ej. exactamente 10% cada uno si percentil=90): el %
+    # de consenso mide superposición entre 3 conjuntos top-K de igual tamaño, no "cuánta
+    # área es realmente buena" en términos absolutos. La correlación de Spearman entre los
+    # valores crudos de cada perfil aporta la información de magnitud/orden que el umbral
+    # binario descarta.
+    cons_v = perfiles["conservador"][base_valida]
+    bal_v = perfiles["balanceado"][base_valida]
+    agr_v = perfiles["agresivo"][base_valida]
+    rho_cons_bal, _ = spearmanr(cons_v, bal_v)
+    rho_cons_agr, _ = spearmanr(cons_v, agr_v)
+    rho_bal_agr, _ = spearmanr(bal_v, agr_v)
+    correlacion_rango = {
+        "conservador_vs_balanceado": round(float(rho_cons_bal), 4),
+        "conservador_vs_agresivo": round(float(rho_cons_agr), 4),
+        "balanceado_vs_agresivo": round(float(rho_bal_agr), 4),
+    }
+
     stats = {
         "percentil_apto": percentil,
         "umbrales_por_perfil": umbrales,
@@ -96,10 +116,16 @@ def analizar_consenso(base_path, conservador_path, agresivo_path, percentil,
         "divergencia_2_perfiles": {"celdas": div2, "pct": _pct(div2)},
         "divergencia_1_perfil": {"celdas": div1, "pct": _pct(div1)},
         "no_apto": {"celdas": no_apto, "pct": _pct(no_apto)},
+        "correlacion_rango_entre_perfiles": correlacion_rango,
         "interpretacion": (
             f"El {_pct(consenso)}% de la zona válida es apta en los 3 perfiles (consenso: "
             f"robusto ante la preferencia del stakeholder); {_pct(div1 + div2)}% es apta solo "
-            f"en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado)."
+            f"en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado). "
+            f"Nota metodológica: el umbral relativo por percentil fija la MISMA proporción de "
+            f"área apta ({100 - percentil}%) en los 3 perfiles por construcción — este 'consenso' "
+            "mide superposición entre conjuntos top-K de igual tamaño, no una medida absoluta "
+            "de calidad territorial. La correlación de Spearman entre perfiles (más abajo) "
+            "complementa esta lectura con la magnitud del acuerdo, no solo el solapamiento binario."
         ),
         "salida_raster": out_raster,
     }

@@ -365,7 +365,10 @@ def extraer_instalaciones_detectadas(
         poly_geoms = []
         poly_probs = []
 
-        for geom, val in shapes(mask_uint8, mask=binary_mask, transform=transform):
+        # connectivity=8: sin esto (default 4), dos píxeles aptos que solo se tocan en
+        # diagonal cuentan como polígonos separados, fragmentando artificialmente una zona
+        # contigua de alta aptitud en múltiples "candidatos" distintos.
+        for geom, val in shapes(mask_uint8, mask=binary_mask, transform=transform, connectivity=8):
             if val == 1:
                 shp = shape(geom)
                 if shp.area >= min_area_m2:

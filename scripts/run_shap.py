@@ -48,9 +48,14 @@ def main():
         print(f"  [ERROR] No existe el modelo ({model_path}). Corre el pipeline primero.")
         return 1
 
+    # Mismo umbral que postgis_validation.prob_min: el cruce aptitud-rendimiento se acota
+    # también a los sitios que el modelo efectivamente aprobaría (ver src/explainability.py).
+    prob_min = config.get('postgis_validation', {}).get('prob_min', 0.70)
+
     print("Calculando valores SHAP (TreeExplainer, sin re-entrenar)...")
     res = explicar(model_path, dataset_path, figures_dir, out_json,
-                   rendimiento_path=rendimiento_path if os.path.exists(rendimiento_path) else None)
+                   rendimiento_path=rendimiento_path if os.path.exists(rendimiento_path) else None,
+                   prob_min=prob_min)
 
     print(f"\n  Muestras explicadas: {res['n_muestras']}")
     print("  Importancia SHAP (global):")
@@ -60,8 +65,17 @@ def main():
     if 'cruce_rendimiento' in res:
         c = res['cruce_rendimiento']
         if 'spearman_aptitud_vs_rendimiento' in c:
-            print(f"\n  Cruce (n={c['n_puntos']}): Spearman aptitud–rendimiento = "
+            print(f"\n  Cruce, muestra completa (n={c['n_puntos']}): "
+                  f"Spearman aptitud–rendimiento = "
                   f"{c['spearman_aptitud_vs_rendimiento']} (p={c['pvalue']})")
+            c_apt = c.get('cruce_solo_sitios_aptos', {})
+            if 'spearman_aptitud_vs_rendimiento' in c_apt:
+                print(f"  Cruce, solo sitios con prob >= {c['prob_min_apto']} "
+                      f"(n={c_apt['n_puntos']}): Spearman aptitud–rendimiento = "
+                      f"{c_apt['spearman_aptitud_vs_rendimiento']} (p={c_apt['pvalue']})")
+            else:
+                print(f"  [AVISO] {c_apt.get('nota', 'sin datos suficientes para el cruce '
+                                                        'restringido a sitios aptos')}")
     print(f"\n  Figuras: {os.path.basename(res['figuras']['bar'])}, "
           f"{os.path.basename(res['figuras']['beeswarm'])}")
     print(f"  JSON: {os.path.basename(out_json)}")

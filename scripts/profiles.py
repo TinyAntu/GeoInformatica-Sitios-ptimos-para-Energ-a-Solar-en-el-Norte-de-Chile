@@ -13,6 +13,9 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.ahp import pesos_perfil  # AHP formal con Ratio de Consistencia (hallazgo 3.3)
+# Grilla de referencia = DEM (no GHI ~1 km), igual que generate_suitability_map.py
+# (hallazgo 2.1, opción B): mismo criterio para que los mapas AHP sean comparables con el RF.
+from scripts.generate_suitability_map import construir_grilla_referencia
 
 # --- FUNCIONES GEOESPACIALES EN MEMORIA ---
 
@@ -95,15 +98,28 @@ def main():
             print(f"ERROR: No se encontró el raster {path}")
             return
 
-    # 3. Cargar grilla base (GHI)
-    print(f"Cargando grilla base: {os.path.basename(ghi_path)}")
-    with rasterio.open(ghi_path) as src:
-        meta_base = src.meta.copy()
-        transform, crs = src.transform, src.crs
-        grid_shape = (src.height, src.width)
-        ghi_data = src.read(1)
-        nodata_ghi = src.nodata if src.nodata is not None else -9999.0
-        ghi_mask_valid = (ghi_data != nodata_ghi) & (~np.isnan(ghi_data))
+    # 3. Grilla base = DEM (resolución fina), NO el GHI (~1 km). El GHI se reproyecta/alinea
+    # a esta grilla más abajo, para que los mapas AHP de perfiles ya no queden ~10x menos
+    # resueltos que el mapa RF con el que se comparan en src/consenso_perfiles.py.
+    #
+    # OJO: NO se usa la misma resolución que 'salida_mapa.resolucion_m' (100 m, la del mapa
+    # RF). A esa resolución, este script mantiene ~15 arrays completos en memoria a la vez
+    # (8 variables crudas + 7 normalizadas) SIN el manejo de memoria de
+    # generate_suitability_map.py (que aplana a valid_mask de inmediato) — probó matar el
+    # proceso por falta de RAM. 'perfiles_inversion.resolucion_m' (default 500 m, mismo
+    # criterio que 'shap_espacial.resolucion_m' para el mismo tipo de costo) controla esto
+    # de forma independiente; sigue siendo ~2x más fino que el GHI original.
+    resolucion_m = perfiles_config.get('resolucion_m', 500)
+    print(f"Cargando grilla base: {os.path.basename(dem_path)}")
+    crs, transform, width, height = construir_grilla_referencia(dem_path, resolucion_m)
+    grid_shape = (height, width)
+    meta_base = {
+        'driver': 'GTiff', 'dtype': rasterio.float32, 'count': 1,
+        'crs': crs, 'transform': transform, 'width': width, 'height': height,
+        'nodata': -9999.0,
+    }
+    ghi_data = read_and_reproject_to_grid(ghi_path, crs, grid_shape, transform)
+    ghi_mask_valid = ~np.isnan(ghi_data)
 
     # 4. Preparar variables topográficas
     print("Alineando variables topográficas...")

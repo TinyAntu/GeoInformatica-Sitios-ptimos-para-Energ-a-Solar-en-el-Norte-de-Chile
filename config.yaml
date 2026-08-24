@@ -139,6 +139,12 @@ consenso_perfiles:
 # infraestructura) la pondera contra el mayor CAPEX/mantenimiento del seguidor. No se
 # modifican las matrices AHP: la comparación es una lectura, no un cambio de pesos.
 perfiles_inversion:
+  # Resolución de la grilla de scripts/profiles.py (mapas AHP conservador/agresivo). Usa el
+  # DEM como base, NO el GHI (~1 km) ni la resolución del mapa RF (salida_mapa.resolucion_m,
+  # 100 m): a 100 m este script mantiene ~15 arrays completos en memoria a la vez y puede
+  # agotar la RAM. 500 m sigue siendo ~2x más fino que el GHI original (mismo criterio de
+  # costo que shap_espacial.resolucion_m). Baja este valor si igual te quedas sin memoria.
+  resolucion_m: 500
   conservador:
     ghi: 0.10
     dist_transmision: 0.40

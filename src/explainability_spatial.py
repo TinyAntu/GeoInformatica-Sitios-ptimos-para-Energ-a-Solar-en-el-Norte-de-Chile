@@ -62,14 +62,17 @@ def _construir_features(config, resolucion_m):
     with np.errstate(invalid="ignore"):
         northness = np.cos(np.radians(aspect))
 
-    px = transform[0]
-    d_trans = calcular_distancia_a_capa(paths_raw["vectores"]["lineas"], crs, grid_shape, transform, px, nombre="transmisión")
-    d_almac = calcular_distancia_a_capa(paths_raw["vectores"]["almacenamiento"], crs, grid_shape, transform, px, nombre="almacenamiento")
-    d_subes = calcular_distancia_a_capa(paths_raw["vectores"]["subestaciones"], crs, grid_shape, transform, px, nombre="subestaciones")
-
+    # Regiones antes que las distancias: calcular_distancia_a_capa necesita `regiones` para
+    # recortar la infraestructura a Antofagasta+Atacama (mismo criterio que el entrenamiento
+    # y que scripts/generate_suitability_map.py).
     regiones = gpd.read_file(paths_raw["vectores"]["regiones"])
     regiones = regiones[regiones["REGION"].isin(["Antofagasta", "Atacama"])].to_crs(crs)
     region_mask = get_rasterized_mask(regiones, grid_shape, transform, fill=0, default_value=1)
+
+    px = transform[0]
+    d_trans = calcular_distancia_a_capa(paths_raw["vectores"]["lineas"], crs, grid_shape, transform, px, regiones, nombre="transmisión")
+    d_almac = calcular_distancia_a_capa(paths_raw["vectores"]["almacenamiento"], crs, grid_shape, transform, px, regiones, nombre="almacenamiento")
+    d_subes = calcular_distancia_a_capa(paths_raw["vectores"]["subestaciones"], crs, grid_shape, transform, px, regiones, nombre="subestaciones")
 
     valid = ((region_mask == 1) & ~np.isnan(ghi) & ~np.isnan(elev) & ~np.isnan(slope)
              & ~np.isnan(northness) & ~np.isnan(d_trans) & ~np.isnan(d_almac) & ~np.isnan(d_subes))

@@ -81,15 +81,19 @@ def main():
         print(f"\n[MOTOR NO DISPONIBLE]\n{e}")
         return 2
 
+    tamano_bloque_km = config.get('validacion', {}).get('tamano_bloque_km', 15)
     out_json = _ruta_abs('data/results/comparacion_montaje.json')
-    stats = comparar(fijo, seguidor, aptitud_path, umbral, out_json)
+    stats = comparar(fijo, seguidor, aptitud_path, umbral, out_json,
+                     tamano_bloque_km=tamano_bloque_km)
 
     f_, s_ = stats['rendimiento_fijo_aptas'], stats['rendimiento_seguidor_aptas']
-    print(f"\n  Zonas aptas: {stats['celdas_aptas']:,} celdas")
+    print(f"\n  Zonas aptas: {stats['celdas_aptas']:,} celdas "
+          f"({stats['n_bloques_espaciales']} bloques espaciales de {tamano_bloque_km:.0f} km)")
     print(f"  Fijo     media={f_['media']}  p90={f_['p90']} kWh/kWp/año")
     print(f"  Seguidor media={s_['media']}  p90={s_['p90']} kWh/kWp/año")
     print(f"  Ganancia seguidor: media={stats['ganancia_seguidor_media_pct']:+}% | "
-          f"mediana por celda={stats['ganancia_seguidor_mediana_celda_pct']:+}% "
+          f"mediana por celda={stats['ganancia_seguidor_mediana_celda_pct']:+}% | "
+          f"mediana por bloque={stats['ganancia_seguidor_mediana_bloque_pct']}% "
           f"(referencia autor +{stats['referencia_autor_pct']}%)")
     print(f"  JSON: {os.path.basename(out_json)}")
     return 0

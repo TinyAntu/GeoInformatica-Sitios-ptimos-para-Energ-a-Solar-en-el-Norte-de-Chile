@@ -214,6 +214,11 @@ def main():
                       f"{cm.get('ganancia_seguidor_media_pct','–')}%",
                       f"ref. autor +{cm.get('referencia_autor_pct','–')}%")
             st.write(f"Fijo: **{f_.get('media','–')}** · Seguidor: **{s_.get('media','–')}** kWh/kWp/año")
+            if "n_bloques_espaciales" in cm:
+                st.caption(f"Mediana por bloque espacial ({cm['n_bloques_espaciales']} bloques "
+                           f"de {cm.get('tamano_bloque_km','–')} km, independientes de la "
+                           f"autocorrelación entre píxeles vecinos): "
+                           f"{cm.get('ganancia_seguidor_mediana_bloque_pct','–')}%")
 
     with c3:
         st.subheader("Explicabilidad SHAP (T6)")
@@ -224,8 +229,12 @@ def main():
                 st.write(f"{it['feature']}: **{it['importancia_pct']}%**")
             cruce = sh.get("cruce_rendimiento", {})
             if "spearman_aptitud_vs_rendimiento" in cruce:
-                st.caption(f"Correlación aptitud–rendimiento: "
-                           f"{cruce['spearman_aptitud_vs_rendimiento']} (≈0 → desacople)")
+                st.caption(f"Correlación aptitud–rendimiento (muestra completa): "
+                           f"{cruce['spearman_aptitud_vs_rendimiento']}")
+                c_apt = cruce.get("cruce_solo_sitios_aptos", {})
+                if "spearman_aptitud_vs_rendimiento" in c_apt:
+                    st.caption(f"Solo sitios con prob ≥ {cruce.get('prob_min_apto', '–')}: "
+                               f"{c_apt['spearman_aptitud_vs_rendimiento']} (≈0 → desacople)")
 
     # --- Consenso entre perfiles (Brecha 6) ---
     co = stats.get("consenso", {})
@@ -236,9 +245,16 @@ def main():
                   "aptas en los 3 → robustas")
         k2.metric("Divergencia (2 perfiles)", f"{co['divergencia_2_perfiles']['pct']}%")
         k3.metric("Divergencia (1 perfil)", f"{co['divergencia_1_perfil']['pct']}%")
-        st.caption(f"Definición: 'apto' = top {100 - co['percentil_apto']}% de cada perfil. "
-                   "Solo una fracción es consenso: dónde conviene depende del criterio "
-                   "priorizado (conservador vs. agresivo).")
+        st.caption(f"Definición: 'apto' = top {100 - co['percentil_apto']}% de cada perfil "
+                   f"(misma proporción de área en los 3, por construcción). Solo una fracción "
+                   "es consenso: dónde conviene depende del criterio priorizado (conservador "
+                   "vs. agresivo).")
+        corr = co.get("correlacion_rango_entre_perfiles", {})
+        if corr:
+            st.caption(f"Correlación de rango (Spearman) entre perfiles: "
+                       f"conservador–balanceado={corr['conservador_vs_balanceado']} · "
+                       f"conservador–agresivo={corr['conservador_vs_agresivo']} · "
+                       f"balanceado–agresivo={corr['balanceado_vs_agresivo']}")
 
     # --- Explicabilidad espacial SHAP (Brecha 8) ---
     se = stats.get("shap_espacial", {})

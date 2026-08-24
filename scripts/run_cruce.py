@@ -63,6 +63,11 @@ def main():
           f"({stats['pct_aptas']}%)")
     print(f"  Rendimiento región: media={r['media']} | aptas: media={a['media']} "
           f"(ganancia {stats['ganancia_aptas_pct']:+}%)")
+    sens = stats.get('sensibilidad_formula_combinacion', {})
+    if sens:
+        print(f"  Sensibilidad a la fórmula (producto vs. media 50/50): "
+              f"Spearman={sens['spearman_ranking_vs_alternativa']} | "
+              f"overlap top-1%={sens['overlap_top_1pct_pct']}%")
     print(f"  Salidas: {os.path.basename(out_ranking)}, {os.path.basename(out_en_aptas)}, "
           f"{os.path.basename(out_json)}")
     return 0

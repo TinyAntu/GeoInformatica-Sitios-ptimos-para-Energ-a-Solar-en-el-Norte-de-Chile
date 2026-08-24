@@ -120,6 +120,12 @@ def main():
             n_estimators=ml['n_estimators'],
             ratio_alt=ml.get('ratio_alt'),
             tamano_bloque_km=config.get('validacion', {}).get('tamano_bloque_km', 15),
+            # Filtrado a Antofagasta+Atacama antes de pasarlo: el shapefile completo de
+            # regiones incluye la costa patagónica (miles de vértices) y reproyectar/hacer
+            # sjoin contra Chile completo es innecesariamente caro en memoria/tiempo.
+            regiones_gdf=vectores['regiones'][
+                vectores['regiones']['REGION'].isin(['Antofagasta', 'Atacama'])
+            ],
         )
 
     # --- Etapa 4: Validación espacial ---

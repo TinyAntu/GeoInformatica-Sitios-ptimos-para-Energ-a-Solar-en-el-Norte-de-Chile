@@ -167,6 +167,7 @@ def entrenar_modelo_rf(
     n_estimators: int = 500,
     ratio_alt: int | None = None,
     tamano_bloque_km: float = 15,
+    regiones_gdf: gpd.GeoDataFrame | None = None,
 ) -> dict:
     """
     Entrena el Random Forest con el ratio principal incorporando Brier Score y análisis de sensibilidad.
@@ -183,7 +184,7 @@ def entrenar_modelo_rf(
     # Optimizacion con OPTUNA
     mejores_params = optimizar_hiperparametros_optuna(
         positivas, pool_negativos, features, ratio, random_state, optuna_config,
-        tamano_bloque_km=tamano_bloque_km,
+        regiones_gdf=regiones_gdf, tamano_bloque_km=tamano_bloque_km,
     )
     
     # Extraemos los mejores valores encontrados con la optimizacion bayesiana de Optuna. 
@@ -215,7 +216,17 @@ def entrenar_modelo_rf(
     # El AUC/Brier de arriba viene de un train_test_split ALEATORIO y por lo tanto
     # está inflado por autocorrelación espacial (Roberts et al. 2017; Ploton et al. 2020).
     # Reportamos SBCV como la métrica honesta y la guardamos como principal.
-    dataset_cv = asignar_bloques_espaciales(dataset.copy(), tamano_bloque_m=tamano_bloque_km * 1000)
+    #
+    # Asignar REGION antes de armar los bloques: sin esto, `asignar_bloques_espaciales`
+    # cae en el fallback sin columna REGION y los bloques NO quedan inter-regionalmente
+    # disjuntos pese a que ese es justamente el propósito del bloque (ver docstring de
+    # src/spatial_validation.py). Con REGION, el bloque incorpora el prefijo de región y
+    # fuerza la disjunción que el diseño original pedía.
+    dataset_cv_base = (
+        asignar_region_a_muestras(dataset.copy(), regiones_gdf)
+        if regiones_gdf is not None else dataset.copy()
+    )
+    dataset_cv = asignar_bloques_espaciales(dataset_cv_base, tamano_bloque_m=tamano_bloque_km * 1000)
     params_rf_sbcv = {
         'n_estimators':     best_n_estimators,
         'max_depth':        best_max_depth,
