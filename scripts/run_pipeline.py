@@ -1,6 +1,7 @@
 import sys
 import os
 import argparse
+import subprocess
 import yaml
 
 # Permite importar módulos desde la raíz del proyecto
@@ -11,13 +12,7 @@ from src.preprocessing import cargar_capas_vectoriales, procesar_dem, reproject_
 from src.sampling import generar_dataset_muestras
 from src.modeling import entrenar_modelo_rf
 from src.utils import _esta_actualizado
-from scripts.run_spatial_validation import main as run_spatial_validation
-from scripts.generate_suitability_map import main as generar_mapa_rf
-from scripts.profiles import main as generar_perfiles_ahp
-from scripts.generar_figuras_informe import main as generar_figuras_informe
-from scripts.validate_and_load_postgis import main as validar_postgis
-from scripts.run_cruce import main as cruzar_aptitud_rendimiento
-from scripts.run_consenso import main as analizar_consenso_perfiles
+
 
 def _resolver_rutas(obj, base_dir: str):
     """Convierte recursivamente todas las rutas relativas del config a absolutas."""
@@ -35,11 +30,36 @@ def _shapefile_paths(shp_path: str) -> list:
     return [base + ext for ext in ['.shp', '.dbf', '.shx', '.prj', '.cpg']]
 
 
+def _correr_etapa(nombre_etapa: str, script: str, args_extra: list | None = None,
+                  motor_best_effort: bool = False) -> bool:
+    """Corre `scripts/<script>` como subproceso independiente.
+    Cada etapa se ejecuta en su propio proceso (no como import + llamada a `main()` en el
+    mismo proceso de run_pipeline.py, para evitar problemas de memoria y dependencias compartidas).
+
+    Devuelve True si la etapa corrió con éxito (código 0), False si se omitió en modo
+    best-effort. Si no es best-effort y falla, aborta el proceso completo.
+    """
+    ruta_script = os.path.join(directorio_raiz, 'scripts', script)
+    cmd = [sys.executable, ruta_script] + (args_extra or [])
+    print(f"\n--- {nombre_etapa} ---")
+    resultado = subprocess.run(cmd, cwd=directorio_raiz)
+    if resultado.returncode != 0:
+        if motor_best_effort:
+            print(f"  [AVISO] '{nombre_etapa}' terminó con código {resultado.returncode} "
+                  "(probablemente el motor Rust solarpv-rs no está compilado, ver AGENTS.md "
+                  "sección 6). Se omite y el pipeline continúa con el resto de las etapas.")
+            return False
+        print(f"ERROR: '{nombre_etapa}' falló con código {resultado.returncode}.")
+        sys.exit(resultado.returncode)
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description='Pipeline Solar Norte de Chile')
     parser.add_argument('--config', default='config.yaml', help='Ruta al archivo de configuración')
     parser.add_argument('--sin-mapas', action='store_true',
-                        help='Omite las etapas de mapas y figuras (5-7); útil para iterar solo en el modelo')
+                        help='Omite todas las etapas posteriores al entrenamiento (5 en adelante); '
+                             'útil para iterar solo en el modelo')
     args = parser.parse_args()
 
     print("Iniciando Pipeline Solar...")
@@ -129,11 +149,10 @@ def main():
         )
 
     # --- Etapa 4: Validación espacial ---
-    print("Ejecutando validación espacial...")
-    run_spatial_validation()
+    _correr_etapa("Etapa 4: Validación espacial (SBCV + LOROCV)", "run_spatial_validation.py")
 
     if args.sin_mapas:
-        print("\nEtapas de mapas y figuras omitidas (--sin-mapas).")
+        print("\nEtapas posteriores al entrenamiento omitidas (--sin-mapas).")
         print("Pipeline ejecutado correctamente.")
         return
 
@@ -142,63 +161,126 @@ def main():
     rasters_procesados = [dem_out, slope_out, aspect_out, ghi_utm_out]
 
     # --- Etapa 5: Mapa de probabilidad RF ---
-    print("\n--- Etapa 5: Mapa de probabilidad RF ---")
     mapa_rf = os.path.join(directorio_raiz, 'data/results/mapa_probabilidad_aptitud.tif')
     entradas_mapa = [ruta_config] + rasters_procesados
     if model_out:
         entradas_mapa.append(model_out)
     if _esta_actualizado(entradas_mapa, [mapa_rf]):
-        print("El mapa de probabilidad ya está actualizado. Se omite.")
+        print("\n--- Etapa 5: Mapa de probabilidad RF --- (ya actualizado, se omite)")
     else:
-        generar_mapa_rf()
+        _correr_etapa("Etapa 5: Mapa de probabilidad RF", "generate_suitability_map.py")
 
     # --- Etapa 6: Mapas de perfiles AHP/WLC ---
-    print("\n--- Etapa 6: Mapas de perfiles de inversión (AHP/WLC) ---")
     mapas_perfiles = [os.path.join(directorio_raiz, f'data/results/aptitud_{p}.tif')
                       for p in ('conservador', 'agresivo')]
     if _esta_actualizado([ruta_config] + rasters_procesados, mapas_perfiles):
-        print("Los mapas de perfiles ya están actualizados. Se omiten.")
+        print("\n--- Etapa 6: Mapas de perfiles de inversión (AHP/WLC) --- (ya actualizado, se omite)")
     else:
-        generar_perfiles_ahp()
+        _correr_etapa("Etapa 6: Mapas de perfiles de inversión (AHP/WLC)", "profiles.py")
 
-    # --- Etapa 7: Figuras cartográficas del informe ---
-    print("\n--- Etapa 7: Figuras cartográficas (7 elementos) ---")
-    figuras = [os.path.join(directorio_raiz, 'figures', nombre)
-               for nombre in ('mapa_aptitud_rf.png', 'mapa_aptitud_conservador.png',
-                              'mapa_aptitud_agresivo.png')]
-    if _esta_actualizado([mapa_rf] + mapas_perfiles, figuras):
-        print("Las figuras cartográficas ya están actualizadas. Se omiten.")
+    # --- Etapa 7: Validación de Coordenadas e Ingesta PostGIS ---
+    # Comportamiento sin cambios: intenta conexión PostGIS en vivo; si no hay BD, cae de
+    # vuelta a solo generar el SQL (la propia validate_and_load_postgis.py ya lo maneja).
+    _correr_etapa("Etapa 7: Validación de Coordenadas e Ingesta PostGIS",
+                 "validate_and_load_postgis.py", ['--config', args.config])
+
+    # --- Etapa 8: Rendimiento PV fijo (motor Rust solarpv-rs) ---
+    # Dependencia externa opcional (ver AGENTS.md sección 6): best-effort, no rompe el
+    # pipeline si el binario no está compilado.
+    out_prefix_rendimiento = os.path.join(
+        directorio_raiz, config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento'))
+    rendimiento_fijo = out_prefix_rendimiento + '_fijo_specific_yield.tif'
+    if _esta_actualizado([ruta_config, dem_out], [rendimiento_fijo]):
+        print("\n--- Etapa 8: Rendimiento PV fijo (motor Rust) --- (ya actualizado, se omite)")
+        motor_ok = True
     else:
-        generar_figuras_informe()
+        motor_ok = _correr_etapa("Etapa 8: Rendimiento PV fijo (motor Rust)",
+                                 "run_solar_yield.py", ['--config', args.config],
+                                 motor_best_effort=True)
 
-    # --- Etapa 8: Validación de Coordenadas e Ingesta PostGIS ---
-    print("\n--- Etapa 8: Validación de Coordenadas e Ingesta PostGIS ---")
-    validar_postgis()
-
-    # --- Etapa 9: Cruce aptitud RF x rendimiento físico (solarpv-rs) ---
-    # Requiere el mapa de rendimiento (scripts/run_solar_yield.py, motor Rust compilado).
-    # Si no existe, run_cruce.main() se omite solo con un aviso y no rompe el pipeline.
-    print("\n--- Etapa 9: Cruce aptitud x rendimiento ---")
-    rendimiento_fijo = os.path.join(directorio_raiz,
-        config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
-        + '_fijo_specific_yield.tif')
+    # --- Etapa 9: Cruce aptitud RF x rendimiento físico ---
+    # run_cruce.py ya se omite solo (con aviso, código 0) si falta el rendimiento fijo.
     salidas_cruce = [os.path.join(directorio_raiz, 'data/results/aptitud_x_rendimiento.tif'),
                      os.path.join(directorio_raiz, 'data/results/rendimiento_en_aptas.tif')]
     if os.path.exists(rendimiento_fijo) and _esta_actualizado([mapa_rf, rendimiento_fijo], salidas_cruce):
-        print("El cruce ya está actualizado. Se omite.")
+        print("\n--- Etapa 9: Cruce aptitud x rendimiento --- (ya actualizado, se omite)")
     else:
-        cruzar_aptitud_rendimiento()
+        _correr_etapa("Etapa 9: Cruce aptitud x rendimiento", "run_cruce.py", ['--config', args.config])
 
-    # --- Etapa 10: Consenso vs. divergencia entre perfiles (Brecha 6) ---
-    print("\n--- Etapa 10: Consenso/divergencia entre perfiles ---")
+    # --- Etapa 10: Comparación fijo vs. seguidor ---
+    # run_comparacion_montaje.py genera el rendimiento seguidor por su cuenta si falta
+    # (ver src/comparacion_montaje.py -> _asegurar_rendimiento); también best-effort.
+    comparacion_json = os.path.join(directorio_raiz, 'data/results/comparacion_montaje.json')
+    if _esta_actualizado([ruta_config, mapa_rf], [comparacion_json]):
+        print("\n--- Etapa 10: Comparación fijo vs. seguidor --- (ya actualizado, se omite)")
+        comparacion_ok = True
+    else:
+        comparacion_ok = _correr_etapa("Etapa 10: Comparación fijo vs. seguidor",
+                                       "run_comparacion_montaje.py", ['--config', args.config],
+                                       motor_best_effort=True)
+
+    # --- Etapa 11: Consenso vs. divergencia entre perfiles (Brecha 6) ---
     perfiles_tif = [mapa_rf] + mapas_perfiles  # RF (balanceado) + conservador + agresivo
     salida_consenso = [os.path.join(directorio_raiz, 'data/results/consenso_perfiles.tif')]
     if _esta_actualizado(perfiles_tif, salida_consenso):
-        print("El consenso de perfiles ya está actualizado. Se omite.")
+        print("\n--- Etapa 11: Consenso/divergencia entre perfiles --- (ya actualizado, se omite)")
     else:
-        analizar_consenso_perfiles()
+        _correr_etapa("Etapa 11: Consenso/divergencia entre perfiles", "run_consenso.py",
+                      ['--config', args.config])
 
-    print("\nPipeline ejecutado correctamente.")
+    # --- Etapa 12: Explicabilidad SHAP global (T6) ---
+    shap_json = os.path.join(directorio_raiz, 'data/results/shap_importancias.json')
+    entradas_shap = [ruta_config]
+    if model_out:
+        entradas_shap.append(model_out)
+    if _esta_actualizado(entradas_shap, [shap_json]):
+        print("\n--- Etapa 12: Explicabilidad SHAP global (T6) --- (ya actualizado, se omite)")
+    else:
+        _correr_etapa("Etapa 12: Explicabilidad SHAP global (T6)", "run_shap.py", ['--config', args.config])
+
+    # --- Etapa 13: Explicabilidad SHAP espacial (Brecha 8) ---
+    shap_espacial_json = os.path.join(directorio_raiz, 'data/results/shap_espacial.json')
+    if _esta_actualizado(entradas_shap, [shap_espacial_json]):
+        print("\n--- Etapa 13: Explicabilidad SHAP espacial (Brecha 8) --- (ya actualizado, se omite)")
+    else:
+        _correr_etapa("Etapa 13: Explicabilidad SHAP espacial (Brecha 8)", "run_shap_spatial.py",
+                      ['--config', args.config])
+
+    # --- Etapa 14: Figuras cartográficas del informe ---
+    # Va DESPUÉS de las etapas 8-13 a propósito: 5 de sus 7 figuras (rendimiento fijo/seguidor,
+    # cruce, consenso, variable dominante SHAP y comparación de montaje) se dibujan sobre
+    # rásters/JSON que recién existen a esta altura. Cuando esta etapa corría antes (era la 7),
+    # generar_figuras_informe.py las omitía con [AVISO] en toda corrida limpia y nunca se
+    # regeneraban, porque el chequeo incremental solo miraba las 3 figuras de aptitud.
+    figuras = [os.path.join(directorio_raiz, 'figures', nombre)
+               for nombre in ('mapa_aptitud_rf.png', 'mapa_aptitud_conservador.png',
+                              'mapa_aptitud_agresivo.png', 'mapa_cruce_aptitud_rendimiento.png',
+                              'mapa_consenso_perfiles.png', 'mapa_shap_dominante.png',
+                              'comparacion_fijo_vs_seguidor.png')]
+    entradas_figuras = [p for p in ([mapa_rf] + mapas_perfiles + salidas_cruce +
+                                    salida_consenso + [comparacion_json])
+                        if os.path.exists(p)]
+    if _esta_actualizado(entradas_figuras, figuras):
+        print("\n--- Etapa 14: Figuras cartográficas (7 elementos) --- (ya actualizado, se omite)")
+    else:
+        _correr_etapa("Etapa 14: Figuras cartográficas (7 elementos)", "generar_figuras_informe.py")
+
+    # --- Etapa 15: Assets del visor ---
+    # Siempre se regenera: lee todos los resultados de las etapas anteriores y es liviana
+    # (reprojecta/reduce a PNG chicos), así que no vale la pena mantener una lista larga de
+    # dependencias para el chequeo incremental.
+    _correr_etapa("Etapa 15: Assets del visor", "generate_web_assets.py", ['--config', args.config])
+
+    # --- Etapa 16: Resumen final ---
+    print("\n" + "=" * 70)
+    print("Pipeline ejecutado correctamente.")
+    if not motor_ok or not comparacion_ok:
+        print("[AVISO] El motor Rust (solarpv-rs) no estaba disponible: se omitieron el "
+              "rendimiento PV y/o la comparación fijo/seguidor. El resto de los resultados "
+              "(mapa RF, perfiles AHP, SHAP, consenso, assets) sí se generaron completos.")
+    print("Para ver los resultados en el visor local:")
+    print("    streamlit run app/visor.py")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

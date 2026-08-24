@@ -17,6 +17,7 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.explainability_spatial import generar_mapas_shap
+from src.utils import _esta_actualizado
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -26,9 +27,12 @@ def _ruta_abs(ruta: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description='Explicabilidad espacial SHAP (Brecha 8)')
     parser.add_argument('--config', default='config.yaml')
+    parser.add_argument('--regenerar', action='store_true',
+                        help='Fuerza recalcular aunque el resultado ya esté actualizado')
     args = parser.parse_args()
 
-    with open(_ruta_abs(args.config), 'r', encoding='utf-8') as f:
+    ruta_config = _ruta_abs(args.config)
+    with open(ruta_config, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
     model_path = _ruta_abs(config['paths']['results'].get('model_rf', 'data/results/model_rf.pkl'))
@@ -41,6 +45,14 @@ def main():
     top_n = cfg.get('top_sitios', 5)
     out_dir = _ruta_abs('data/results')
     figures_dir = _ruta_abs('figures')
+
+    # Esta etapa es la más cara del pipeline (millones de píxeles vía TreeExplainer): se
+    # salta si el resultado ya es más nuevo que el modelo y la config, igual que cuando
+    # corre dentro de run_pipeline.py (que usa el mismo _esta_actualizado).
+    out_json = os.path.join(out_dir, 'shap_espacial.json')
+    if not args.regenerar and _esta_actualizado([ruta_config, model_path], [out_json]):
+        print(f"  [OK] Ya existe y está actualizado: {out_json} (usa --regenerar para forzar)")
+        return 0
 
     print(f"Generando mapas SHAP espaciales (resolución {resolucion_m} m, Top-{top_n} sitios)...")
     res = generar_mapas_shap(config, model_path, resolucion_m, out_dir, figures_dir, top_n=top_n)

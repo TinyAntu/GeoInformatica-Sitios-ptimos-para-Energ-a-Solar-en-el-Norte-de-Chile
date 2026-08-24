@@ -24,6 +24,7 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.solar_yield import generar_mapa_rendimiento, MotorNoDisponibleError
+from src.utils import _esta_actualizado
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -38,9 +39,12 @@ def main():
                         help="Montaje: 'tilt' (fijo) o 'tracker' (seguidor de un eje)")
     parser.add_argument('--dry-run', action='store_true',
                         help='Imprime el comando sin ejecutar el motor (útil si aún no está compilado)')
+    parser.add_argument('--regenerar', action='store_true',
+                        help='Fuerza recalcular aunque el resultado ya esté actualizado')
     args = parser.parse_args()
 
-    with open(_ruta_abs(args.config), 'r', encoding='utf-8') as f:
+    ruta_config = _ruta_abs(args.config)
+    with open(ruta_config, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
     cfg = config.get('solarpv')
@@ -56,6 +60,15 @@ def main():
     montaje = cfg.get('montaje', {})
     # El sufijo distingue las salidas de montaje fijo vs seguidor (evita pisarse).
     out_prefix = _ruta_abs(cfg['out_prefix']) + ('_fijo' if args.mount == 'tilt' else '_seguidor')
+
+    # El motor puede tardar minutos u horas (ver README): se salta si el rendimiento ya
+    # existe y está más nuevo que el DEM y la config, igual que hace run_comparacion_montaje.py
+    # (_asegurar_rendimiento) y run_pipeline.py para esta misma etapa.
+    dem_path = _ruta_abs(cfg['dem'])
+    salida_esperada = f"{out_prefix}_specific_yield.tif"
+    if not args.regenerar and not args.dry_run and _esta_actualizado([ruta_config, dem_path], [salida_esperada]):
+        print(f"  [OK] Ya existe y está actualizado: {salida_esperada} (usa --regenerar para forzar)")
+        return 0
 
     try:
         salida = generar_mapa_rendimiento(
