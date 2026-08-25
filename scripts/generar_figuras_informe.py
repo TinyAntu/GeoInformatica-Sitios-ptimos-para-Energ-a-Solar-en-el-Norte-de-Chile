@@ -316,7 +316,7 @@ def renderizar_metricas_validacion(json_topk, json_validacion, out_png):
     ax_a.set_xlim(0, 8.9)
     ax_a.set_xlabel('Razón de cumplimiento  (≥ 1 cumple el umbral)', fontsize=9,
                     color=COLOR_TINTA)
-    ax_a.set_title('A. Umbrales comprometidos en PEP1 §6.5', fontsize=10.5,
+    ax_a.set_title('A. Umbrales establecidos', fontsize=10.5,
                    color=COLOR_TINTA, pad=8)
 
     # --- Panel B: recall y precisión en función de K --------------------------------
@@ -366,7 +366,7 @@ def renderizar_metricas_validacion(json_topk, json_validacion, out_png):
     ax_c.axhline(umbral_pep1, color=color_falla, linestyle='--', linewidth=1.6, zorder=4)
     # Debajo de la línea: la banda sobre ella la ocupa la leyenda, y encima del umbral no
     # hay nada que anotar (ningún valor llega ahí, que es justamente el punto del panel).
-    ax_c.text(-0.45, umbral_pep1 - 0.35, f'umbral PEP1 = {umbral_pep1:.0f} %',
+    ax_c.text(-0.45, umbral_pep1 - 0.35, f'umbral = {umbral_pep1:.0f} %',
               ha='left', va='top', fontsize=8.5, color=color_falla, fontweight='bold')
 
     for i, k in enumerate(ks_c):
@@ -397,21 +397,28 @@ def renderizar_metricas_validacion(json_topk, json_validacion, out_png):
     ax_a.grid(axis='x', color='#e5e5e5', linewidth=0.7)
     ax_b.grid(color='#e5e5e5', linewidth=0.7)
     ax_c.grid(axis='y', color='#e5e5e5', linewidth=0.7)
-
+    
     ha_mw = topk.get('supuesto_huella_ha_por_mw')
-    pie = ("Fuente: elaboración propia, Grupo Solar (USACH). Validación LORO-CV sobre "
-           f"{topk['out_of_sample_loro']['n_plantas_evaluadas']} plantas del catastro "
-           "(Ministerio de Energía).\n"
-           f"Huella de plantas reconstruida por potencia instalada ({ha_mw} ha/MWac; el rango "
-           "publicado va de 1,45 —LBNL 2022, fijo— a 3,60 —NREL 2013, área total— y en todo "
-           "ese rango el techo\nse mantiene bajo el umbral de PEP1); grilla de análisis "
-           f"{topk['out_of_sample_loro']['resolucion_m']} m.  "
-           f"Fecha de elaboración: {date.today().strftime('%d-%m-%Y')}")
+    n_plantas = topk['out_of_sample_loro']['n_plantas_evaluadas']
+    resolucion = topk['out_of_sample_loro']['resolucion_m']
+    pie = (
+        "Fuente de datos: catastro de instalaciones de generación eléctrica en operación "
+        f"(Ministerio de Energía, Chile; 716 registros, {n_plantas} en la zona de estudio, "
+        "en operación hasta 11-2025).\n"
+        f"Método: Random Forest (model_rf.pkl) validado con Leave-One-Region-Out CV sobre "
+        f"{n_plantas} plantas, huella reconstruida por potencia instalada ({ha_mw} ha/MWac; "
+        "rango publicado 1,45–3,60 según LBNL 2022 y NREL 2013).\n"
+        "CRS: EPSG:32719 (WGS 84 / UTM zona 19S)  |  "
+        f"Grilla de análisis: {resolucion} m  |  Elaboración propia, Grupo Solar (USACH)  |  "
+        f"Fecha de elaboración: {date.today().strftime('%d-%m-%Y')}"
+    )
     fig.text(0.5, 0.005, pie, ha='center', va='bottom', fontsize=7.5, color=COLOR_TINTA)
 
-    fig.suptitle('Validación del modelo de aptitud frente a los umbrales comprometidos en PEP1',
+    fig.suptitle('Validación del modelo de aptitud frente a los umbrales establecidos',
                  fontsize=12.5, color=COLOR_TINTA, y=0.99)
-    fig.tight_layout(rect=(0, 0.075, 1, 0.95))
+    # Margen inferior ampliado (0.075 -> 0.10) para que la tercera línea del pie no pise el
+    # eje X del panel A.
+    fig.tight_layout(rect=(0, 0.10, 1, 0.95))
     fig.savefig(out_png, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f"  -> Guardado: {out_png}")
