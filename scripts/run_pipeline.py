@@ -246,7 +246,18 @@ def main():
         _correr_etapa("Etapa 13: Explicabilidad SHAP espacial (Brecha 8)", "run_shap_spatial.py",
                       ['--config', args.config])
 
-    # --- Etapa 14: Figuras cartográficas del informe ---
+    # --- Etapa 14: Métricas Recall@K / Precisión@K contra los umbrales de PEP1 ---
+    # Cierra los dos umbrales de PEP1 §6.5 que no se calculaban. Necesita el modelo y el
+    # mapa RF ya generados (etapas 3 y 5).
+    metricas_topk_json = os.path.join(directorio_raiz, 'data/results/metricas_topk.json')
+    entradas_topk = [ruta_config, mapa_rf] + ([model_out] if model_out else [])
+    if _esta_actualizado(entradas_topk, [metricas_topk_json]):
+        print("\n--- Etapa 14: Métricas Recall@K / Precisión@K --- (ya actualizado, se omite)")
+    else:
+        _correr_etapa("Etapa 14: Métricas Recall@K / Precisión@K", "run_metricas_topk.py",
+                      ['--config', args.config])
+
+    # --- Etapa 15: Figuras cartográficas del informe ---
     # Va DESPUÉS de las etapas 8-13 a propósito: 5 de sus 7 figuras (rendimiento fijo/seguidor,
     # cruce, consenso, variable dominante SHAP y comparación de montaje) se dibujan sobre
     # rásters/JSON que recién existen a esta altura. Cuando esta etapa corría antes (era la 7),
@@ -256,22 +267,22 @@ def main():
                for nombre in ('mapa_aptitud_rf.png', 'mapa_aptitud_conservador.png',
                               'mapa_aptitud_agresivo.png', 'mapa_cruce_aptitud_rendimiento.png',
                               'mapa_consenso_perfiles.png', 'mapa_shap_dominante.png',
-                              'comparacion_fijo_vs_seguidor.png')]
+                              'comparacion_fijo_vs_seguidor.png', 'metricas_validacion.png')]
     entradas_figuras = [p for p in ([mapa_rf] + mapas_perfiles + salidas_cruce +
-                                    salida_consenso + [comparacion_json])
+                                    salida_consenso + [comparacion_json, metricas_topk_json])
                         if os.path.exists(p)]
     if _esta_actualizado(entradas_figuras, figuras):
-        print("\n--- Etapa 14: Figuras cartográficas (7 elementos) --- (ya actualizado, se omite)")
+        print("\n--- Etapa 15: Figuras cartográficas (7 elementos) --- (ya actualizado, se omite)")
     else:
-        _correr_etapa("Etapa 14: Figuras cartográficas (7 elementos)", "generar_figuras_informe.py")
+        _correr_etapa("Etapa 15: Figuras cartográficas (7 elementos)", "generar_figuras_informe.py")
 
-    # --- Etapa 15: Assets del visor ---
+    # --- Etapa 16: Assets del visor ---
     # Siempre se regenera: lee todos los resultados de las etapas anteriores y es liviana
     # (reprojecta/reduce a PNG chicos), así que no vale la pena mantener una lista larga de
     # dependencias para el chequeo incremental.
-    _correr_etapa("Etapa 15: Assets del visor", "generate_web_assets.py", ['--config', args.config])
+    _correr_etapa("Etapa 16: Assets del visor", "generate_web_assets.py", ['--config', args.config])
 
-    # --- Etapa 16: Resumen final ---
+    # --- Etapa 17: Resumen final ---
     print("\n" + "=" * 70)
     print("Pipeline ejecutado correctamente.")
     if not motor_ok or not comparacion_ok:

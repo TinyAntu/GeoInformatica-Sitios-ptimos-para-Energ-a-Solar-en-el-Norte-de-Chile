@@ -253,6 +253,170 @@ def renderizar_comparacion_montaje(json_path, out_png):
     print(f"  -> Guardado: {out_png}")
 
 
+def renderizar_metricas_validacion(json_topk, json_validacion, out_png):
+    """Panel de las 5 métricas comprometidas en PEP1 §6.5 (no es un mapa: sin norte/escala).
+
+    El mensaje central no es "cumple / no cumple" sino que el umbral de Precisión@K1 era
+    INALCANZABLE por construcción: con ~144 km² de huella instalada sobre ~203.000 km² de
+    área de estudio, ni un modelo perfecto supera el 7,1 % en el top 1 %. Por eso el panel C
+    dibuja el techo teórico junto al valor logrado y al umbral, en la misma escala.
+    """
+    print("Renderizando panel de métricas de validación ...")
+    with open(json_topk, 'r', encoding='utf-8') as f:
+        topk = json.load(f)
+    with open(json_validacion, 'r', encoding='utf-8') as f:
+        val = json.load(f)
+
+    loro = topk['out_of_sample_loro']['combinado_por_k']
+    insample = topk['in_sample_por_region']['combinado_por_k']
+    contraste = topk['contraste_umbrales_pep1']
+
+    color_ok, color_falla = '#009E73', '#D55E00'      # verde / vermellón (Okabe-Ito)
+    color_in, color_out = '#56B4E9', '#0072B2'        # celeste / azul
+    color_techo = '#cccccc'
+
+    fig, (ax_a, ax_b, ax_c) = plt.subplots(1, 3, figsize=(15.5, 5.2))
+
+    # --- Panel A: contraste con los 5 umbrales -------------------------------------
+    # Cada fila se normaliza como "razón de cumplimiento": >=1 significa que se cumple.
+    # Para los criterios donde MENOR es mejor (gap, Brier) la razón se invierte, de modo
+    # que la lectura del eje sea la misma en las cinco filas.
+    lorocv = val['leave_one_region_out_cv']
+    sbcv = val['spatial_block_cv']
+    filas = [
+        ('AUC LORO-CV',    lorocv['auc_mean'],            0.75, 'mayor'),
+        ('Gap AUC',        lorocv['gap_auc'],             0.15, 'menor'),
+        ('Brier (SBCV)',   sbcv['brier_mean'],            0.20, 'menor'),
+        ('Recall@K3',      contraste['recall_k3']['valor'],    0.85, 'mayor'),
+        ('Precisión@K1',   contraste['precision_k1']['valor'], 0.15, 'mayor'),
+    ]
+    etiquetas, razones, colores, anotaciones = [], [], [], []
+    for nombre, valor, umbral, sentido in filas:
+        if sentido == 'mayor':
+            razon, cumple, simbolo = valor / umbral, valor >= umbral, '≥'
+        else:
+            # Un valor ~0 daría una razón enorme; se acota para no romper la escala.
+            razon = min(umbral / valor, 8.0) if valor > 0 else 8.0
+            cumple, simbolo = valor <= umbral, '≤'
+        etiquetas.append(nombre)
+        razones.append(razon)
+        colores.append(color_ok if cumple else color_falla)
+        anotaciones.append(f"{valor:.4g}  (umbral {simbolo} {umbral:g})")
+
+    y = np.arange(len(filas))
+    ax_a.barh(y, razones, color=colores, height=0.62, zorder=3)
+    # La línea punteada en x=1 no se rotula: el propio label del eje X ya dice qué significa,
+    # y un texto flotante aquí se solapa con el título del panel.
+    ax_a.axvline(1.0, color=COLOR_TINTA, linestyle='--', linewidth=1.2, zorder=4)
+    for i, texto in enumerate(anotaciones):
+        ax_a.text(max(razones[i], 1.0) + 0.12, i, texto, va='center', fontsize=8,
+                  color=COLOR_TINTA)
+    ax_a.set_yticks(y)
+    ax_a.set_yticklabels(etiquetas, fontsize=9)
+    ax_a.set_xlim(0, 8.9)
+    ax_a.set_xlabel('Razón de cumplimiento  (≥ 1 cumple el umbral)', fontsize=9,
+                    color=COLOR_TINTA)
+    ax_a.set_title('A. Umbrales comprometidos en PEP1 §6.5', fontsize=10.5,
+                   color=COLOR_TINTA, pad=8)
+
+    # --- Panel B: recall y precisión en función de K --------------------------------
+    ks = sorted(float(k) for k in loro.keys())
+    recall_out = [loro[f"{k:g}"]['recall'] * 100 for k in ks]
+    recall_in = [insample[f"{k:g}"]['recall'] * 100 for k in ks]
+    prec_out = [loro[f"{k:g}"]['precision_area']['precision'] * 100 for k in ks]
+
+    ax_b.plot(ks, recall_in, 'o-', color=color_in, linewidth=1.8, markersize=4.5,
+              label='Recall in-sample (A-500)')
+    ax_b.plot(ks, recall_out, 'o-', color=color_out, linewidth=2.0, markersize=5,
+              label='Recall out-of-sample (LORO)')
+    ax_b.plot(ks, prec_out, 's--', color=color_falla, linewidth=1.6, markersize=4,
+              label='Precisión-área out-of-sample')
+    for k_marca in (1.0, 3.0):
+        ax_b.axvline(k_marca, color='#bbbbbb', linewidth=0.9, linestyle=':', zorder=0)
+    ax_b.set_xlabel('K — porcentaje del área de estudio seleccionada (%)', fontsize=9,
+                    color=COLOR_TINTA)
+    ax_b.set_ylabel('Porcentaje (%)', fontsize=9, color=COLOR_TINTA)
+    ax_b.set_title('B. Recall y precisión en función de K', fontsize=10.5,
+                   color=COLOR_TINTA, pad=8)
+    ax_b.legend(fontsize=8, loc='center right', frameon=True, framealpha=0.92,
+                edgecolor='#bbbbbb')
+
+    # --- Panel C: logrado vs. techo vs. umbral de PEP1 ------------------------------
+    ks_c = ['1', '3']
+    x = np.arange(len(ks_c))
+    ancho = 0.34
+    techos = [loro[k]['precision_area']['precision_techo_modelo_perfecto'] * 100 for k in ks_c]
+    log_in = [insample[k]['precision_area']['precision'] * 100 for k in ks_c]
+    log_out = [loro[k]['precision_area']['precision'] * 100 for k in ks_c]
+
+    # Techo como barra fantasma ancha detrás: deja ver cuánto del máximo se alcanzó.
+    ax_c.bar(x, techos, ancho * 2.5, color=color_techo, zorder=1,
+             label='Techo teórico')
+    b_in = ax_c.bar(x - ancho / 2, log_in, ancho, color=color_in, zorder=3,
+                    label='In-sample')
+    b_out = ax_c.bar(x + ancho / 2, log_out, ancho, color=color_out, zorder=3,
+                     label='Out-of-sample (LORO)')
+    ax_c.bar_label(b_in, fmt='%.2f', fontsize=7.5, color=COLOR_TINTA, padding=2)
+    ax_c.bar_label(b_out, fmt='%.2f', fontsize=7.5, color=COLOR_TINTA, padding=2)
+
+    umbral_pep1 = contraste['precision_k1']['umbral_pep1'] * 100
+    # xlim explícito: fija el borde izquierdo para poder anclar ahí la etiqueta del umbral
+    # sin que se recorte (con el xlim automático quedaba fuera del área dibujable).
+    ax_c.set_xlim(-0.5, len(ks_c) - 0.5)
+    ax_c.axhline(umbral_pep1, color=color_falla, linestyle='--', linewidth=1.6, zorder=4)
+    # Debajo de la línea: la banda sobre ella la ocupa la leyenda, y encima del umbral no
+    # hay nada que anotar (ningún valor llega ahí, que es justamente el punto del panel).
+    ax_c.text(-0.45, umbral_pep1 - 0.35, f'umbral PEP1 = {umbral_pep1:.0f} %',
+              ha='left', va='top', fontsize=8.5, color=color_falla, fontweight='bold')
+
+    for i, k in enumerate(ks_c):
+        pct = loro[k]['precision_area']['pct_del_techo_alcanzado']
+        # Holgura amplia sobre la barra fantasma: con un margen chico la anotación chocaba
+        # con las cifras que bar_label pone encima de las barras de valor logrado.
+        ax_c.text(i, techos[i] + 0.9, f"{pct:.0f} % del techo", ha='center', va='bottom',
+                  fontsize=8.5, color=COLOR_TINTA, fontweight='bold')
+
+    ax_c.set_xticks(x)
+    ax_c.set_xticklabels([f'K = {k} %' for k in ks_c], fontsize=9)
+    ax_c.set_ylim(0, umbral_pep1 * 1.22)
+    ax_c.set_ylabel('Precisión-área (%)', fontsize=9, color=COLOR_TINTA)
+    ax_c.set_title('C. El umbral era inalcanzable por construcción', fontsize=10.5,
+                   color=COLOR_TINTA, pad=8)
+    # Centro-derecha: el único cuadrante libre (arriba está la línea del umbral, abajo las
+    # barras, y arriba a la izquierda la etiqueta del umbral).
+    ax_c.legend(fontsize=7.5, loc='center right', frameon=True, framealpha=0.92,
+                edgecolor='#bbbbbb')
+
+    for ax in (ax_a, ax_b, ax_c):
+        ax.tick_params(labelsize=8.5, colors=COLOR_TINTA)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('#bbbbbb')
+        ax.spines['bottom'].set_color('#bbbbbb')
+        ax.set_axisbelow(True)
+    ax_a.grid(axis='x', color='#e5e5e5', linewidth=0.7)
+    ax_b.grid(color='#e5e5e5', linewidth=0.7)
+    ax_c.grid(axis='y', color='#e5e5e5', linewidth=0.7)
+
+    ha_mw = topk.get('supuesto_huella_ha_por_mw')
+    pie = ("Fuente: elaboración propia, Grupo Solar (USACH). Validación LORO-CV sobre "
+           f"{topk['out_of_sample_loro']['n_plantas_evaluadas']} plantas del catastro "
+           "(Ministerio de Energía).\n"
+           f"Huella de plantas reconstruida por potencia instalada ({ha_mw} ha/MWac; el rango "
+           "publicado va de 1,45 —LBNL 2022, fijo— a 3,60 —NREL 2013, área total— y en todo "
+           "ese rango el techo\nse mantiene bajo el umbral de PEP1); grilla de análisis "
+           f"{topk['out_of_sample_loro']['resolucion_m']} m.  "
+           f"Fecha de elaboración: {date.today().strftime('%d-%m-%Y')}")
+    fig.text(0.5, 0.005, pie, ha='center', va='bottom', fontsize=7.5, color=COLOR_TINTA)
+
+    fig.suptitle('Validación del modelo de aptitud frente a los umbrales comprometidos en PEP1',
+                 fontsize=12.5, color=COLOR_TINTA, y=0.99)
+    fig.tight_layout(rect=(0, 0.075, 1, 0.95))
+    fig.savefig(out_png, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  -> Guardado: {out_png}")
+
+
 def main():
     print("=== GENERANDO FIGURAS CARTOGRÁFICAS PARA EL INFORME (PEP1 + T8) ===")
     with open(os.path.join(directorio_raiz, 'config.yaml'), 'r', encoding='utf-8') as f:
@@ -354,6 +518,16 @@ def main():
                                        os.path.join(figures_dir, 'comparacion_fijo_vs_seguidor.png'))
     else:
         print("  [AVISO] No existe comparacion_montaje.json; corre scripts/run_comparacion_montaje.py.")
+
+    # --- Métricas de validación vs. umbrales de PEP1 — panel de 3 gráficos, no es un mapa ---
+    json_topk = os.path.join(results_dir, 'metricas_topk.json')
+    json_validacion = os.path.join(results_dir, 'validacion_espacial.json')
+    if os.path.exists(json_topk) and os.path.exists(json_validacion):
+        renderizar_metricas_validacion(json_topk, json_validacion,
+                                       os.path.join(figures_dir, 'metricas_validacion.png'))
+    else:
+        print("  [AVISO] Faltan metricas_topk.json o validacion_espacial.json; "
+              "corre scripts/run_metricas_topk.py.")
 
     print("=== FIGURAS GENERADAS ===")
 

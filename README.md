@@ -38,6 +38,7 @@ cruce → SHAP global → SHAP espacial → assets → visor. Los pasos de SHAP 
 | Consenso entre perfiles (= Etapa 10)       | `python scripts/run_consenso.py --config config.yaml` |
 | Explicabilidad SHAP global                 | `python scripts/run_shap.py --config config.yaml` |
 | Explicabilidad SHAP espacial (Brecha 8)    | `python scripts/run_shap_spatial.py --config config.yaml` |
+| Recall@K / Precisión@K vs. umbrales PEP1   | `python scripts/run_metricas_topk.py --config config.yaml` |
 | Assets del visor                           | `python scripts/generate_web_assets.py --config config.yaml` |
 | Visor web                                  | `streamlit run app/visor.py` |
 

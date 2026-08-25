@@ -35,8 +35,12 @@ def optimizar_hiperparametros_optuna(positivas_df, pool_neg_df, features, ratio,
 
     # 3. Objective basado en SBCV 
     objective = make_objective_spatial(dataset, features, optuna_config, random_state)
-
-    study = optuna.create_study(direction='minimize')
+    
+    # 4. Crear estudio y optimizar
+    study = optuna.create_study(
+        direction='minimize',
+        sampler=optuna.samplers.TPESampler(seed=random_state),
+    )
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
