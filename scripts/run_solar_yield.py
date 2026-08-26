@@ -39,6 +39,9 @@ def main():
                         help="Montaje: 'tilt' (fijo) o 'tracker' (seguidor de un eje)")
     parser.add_argument('--dry-run', action='store_true',
                         help='Imprime el comando sin ejecutar el motor (útil si aún no está compilado)')
+    parser.add_argument('--zona', default=None,
+                        help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"): '
+                             'usa su DEM y escribe en su directorio de resultados.')
     parser.add_argument('--regenerar', action='store_true',
                         help='Fuerza recalcular aunque el resultado ya esté actualizado')
     args = parser.parse_args()
@@ -58,6 +61,25 @@ def main():
     bounds_utm = pv.get('bounds_utm')
 
     montaje = cfg.get('montaje', {})
+
+    # Con --zona se sustituyen el DEM y el destino, pero NO el montaje (tilt/azimut/gcr): la
+    # comparación entre zonas debe mantener la misma configuración física, o la diferencia de
+    # rendimiento mezclaría geografía con elección de montaje. `per_cell_lat` ya ajusta la
+    # geometría solar celda a celda, así que la latitud de referencia solo fija el encabezado.
+    if args.zona:
+        bloque = config.get(args.zona) or {}
+        if not bloque:
+            print(f"ERROR: config.yaml no tiene el bloque '{args.zona}'.")
+            return 1
+        cfg = dict(cfg)
+        cfg['dem'] = bloque.get('dem', cfg['dem'])
+        dir_res = bloque.get('dir_resultados', f'data/results/{args.zona}')
+        os.makedirs(_ruta_abs(dir_res), exist_ok=True)
+        cfg['out_prefix'] = os.path.join(dir_res, 'rendimiento')
+        for clave in ('lat', 'lon'):
+            if bloque.get(clave) is not None:
+                cfg[clave] = bloque[clave]
+
     # El sufijo distingue las salidas de montaje fijo vs seguidor (evita pisarse).
     out_prefix = _ruta_abs(cfg['out_prefix']) + ('_fijo' if args.mount == 'tilt' else '_seguidor')
 

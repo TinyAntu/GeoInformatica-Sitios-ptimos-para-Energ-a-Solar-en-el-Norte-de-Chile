@@ -104,8 +104,14 @@ def dibujar_barra_escala(ax, largo_km=100):
     ax.add_patch(patches.Rectangle((bx, by), largo_m / 2, alto,
                                    facecolor='white', edgecolor=COLOR_TINTA,
                                    linewidth=0.5, zorder=6))
-    ax.text(bx, by + alto * 1.8, f'0        {largo_km // 2}        {largo_km} km',
-            fontsize=8, color=COLOR_TINTA, zorder=6)
+    # Una etiqueta por marca, posicionada en coordenadas de DATOS. Antes era una sola cadena
+    # con espacios fijos ('0    50    100 km'): la separación en caracteres no depende del
+    # largo real de la barra, así que las marcas dejaban de coincidir con ella en cuanto
+    # cambiaba la relación de aspecto del mapa.
+    for frac, etiqueta in ((0.0, '0'), (0.5, f'{largo_km // 2}'), (1.0, f'{largo_km} km')):
+        ax.text(bx + largo_m * frac, by + alto * 1.8, etiqueta,
+                fontsize=8, color=COLOR_TINTA, zorder=6,
+                ha='center' if frac < 1.0 else 'right')
 
 
 def dibujar_norte(ax):

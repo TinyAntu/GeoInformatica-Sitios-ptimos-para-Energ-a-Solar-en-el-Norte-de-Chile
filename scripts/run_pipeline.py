@@ -1,7 +1,6 @@
 import sys
 import os
 import argparse
-import subprocess
 import yaml
 
 # Permite importar módulos desde la raíz del proyecto
@@ -11,7 +10,7 @@ sys.path.append(directorio_raiz)
 from src.preprocessing import cargar_capas_vectoriales, procesar_dem, reproject_raster_to_utm
 from src.sampling import generar_dataset_muestras
 from src.modeling import entrenar_modelo_rf
-from src.utils import _esta_actualizado
+from src.utils import _esta_actualizado, _correr_etapa
 
 
 def _resolver_rutas(obj, base_dir: str):
@@ -30,36 +29,17 @@ def _shapefile_paths(shp_path: str) -> list:
     return [base + ext for ext in ['.shp', '.dbf', '.shx', '.prj', '.cpg']]
 
 
-def _correr_etapa(nombre_etapa: str, script: str, args_extra: list | None = None,
-                  motor_best_effort: bool = False) -> bool:
-    """Corre `scripts/<script>` como subproceso independiente.
-    Cada etapa se ejecuta en su propio proceso (no como import + llamada a `main()` en el
-    mismo proceso de run_pipeline.py, para evitar problemas de memoria y dependencias compartidas).
-
-    Devuelve True si la etapa corrió con éxito (código 0), False si se omitió en modo
-    best-effort. Si no es best-effort y falla, aborta el proceso completo.
-    """
-    ruta_script = os.path.join(directorio_raiz, 'scripts', script)
-    cmd = [sys.executable, ruta_script] + (args_extra or [])
-    print(f"\n--- {nombre_etapa} ---")
-    resultado = subprocess.run(cmd, cwd=directorio_raiz)
-    if resultado.returncode != 0:
-        if motor_best_effort:
-            print(f"  [AVISO] '{nombre_etapa}' terminó con código {resultado.returncode} "
-                  "(probablemente el motor Rust solarpv-rs no está compilado, ver AGENTS.md "
-                  "sección 6). Se omite y el pipeline continúa con el resto de las etapas.")
-            return False
-        print(f"ERROR: '{nombre_etapa}' falló con código {resultado.returncode}.")
-        sys.exit(resultado.returncode)
-    return True
-
-
 def main():
     parser = argparse.ArgumentParser(description='Pipeline Solar Norte de Chile')
     parser.add_argument('--config', default='config.yaml', help='Ruta al archivo de configuración')
     parser.add_argument('--sin-mapas', action='store_true',
                         help='Omite todas las etapas posteriores al entrenamiento (5 en adelante); '
                              'útil para iterar solo en el modelo')
+    parser.add_argument('--con-transferencia', action='store_true',
+                        help='Añade la etapa 15: aplica el modelo ya entrenado sobre la región '
+                             'declarada en el bloque "transferibilidad" del config, sin '
+                             'reentrenar, para medir su generalización. Se omite por defecto '
+                             'porque requiere un DEM adicional que no todos tienen descargado.')
     args = parser.parse_args()
 
     print("Iniciando Pipeline Solar...")
@@ -257,7 +237,35 @@ def main():
         _correr_etapa("Etapa 14: Métricas Recall@K / Precisión@K", "run_metricas_topk.py",
                       ['--config', args.config])
 
-    # --- Etapa 15: Figuras cartográficas del informe ---
+    # --- Etapa 15: Transferencia a otra región (opt-in) ---
+    # Va ANTES de las figuras y los assets porque el visor y el manifest necesitan sus
+    # artefactos. Es opt-in: requiere un DEM que no está en el repo y añade varios minutos.
+    bloque_transf = config.get('transferibilidad') or {}
+    metricas_transf = None  # se define solo si la etapa llega a evaluarse (ver etapa 17b)
+    if not args.con_transferencia:
+        print("\n--- Etapa 15: Transferencia a otra región --- (omitida; usa --con-transferencia)")
+    elif not bloque_transf:
+        print("\n--- Etapa 15: Transferencia a otra región --- "
+              "[OMITIDA] config.yaml no tiene el bloque 'transferibilidad'.")
+    else:
+        carpetas = [os.path.join(directorio_raiz, c) for c in bloque_transf.get('dem_folders', [])]
+        faltantes = [c for c in carpetas if not os.path.isdir(c)]
+        dem_zona = os.path.join(directorio_raiz, bloque_transf['dem'])
+        metricas_transf = os.path.join(
+            directorio_raiz,
+            bloque_transf.get('dir_resultados', 'data/results/transferibilidad'),
+            'metricas_transferibilidad.json')
+        if faltantes:
+            print("\n--- Etapa 15: Transferencia a otra región --- "
+                  f"[OMITIDA] falta el DEM crudo: {', '.join(faltantes)}")
+        elif _esta_actualizado([ruta_config, dem_zona] + ([model_out] if model_out else []),
+                               [metricas_transf]):
+            print("\n--- Etapa 15: Transferencia a otra región --- (ya actualizado, se omite)")
+        else:
+            _correr_etapa("Etapa 15: Transferencia a otra región", "run_zona.py",
+                          ['--config', args.config, '--zona', 'transferibilidad'])
+
+    # --- Etapa 16: Figuras cartográficas del informe ---
     # Va DESPUÉS de las etapas 8-13 a propósito: 5 de sus 7 figuras (rendimiento fijo/seguidor,
     # cruce, consenso, variable dominante SHAP y comparación de montaje) se dibujan sobre
     # rásters/JSON que recién existen a esta altura. Cuando esta etapa corría antes (era la 7),
@@ -268,27 +276,43 @@ def main():
                               'mapa_aptitud_agresivo.png', 'mapa_cruce_aptitud_rendimiento.png',
                               'mapa_consenso_perfiles.png', 'mapa_shap_dominante.png',
                               'comparacion_fijo_vs_seguidor.png', 'metricas_validacion.png')]
+    # El propio script entra como dependencia: sin él, un cambio de código en las figuras
+    # (colores, escala gráfica, pies de mapa) no dispara la regeneración, porque todos los
+    # datos de entrada siguen siendo más viejos que los PNG ya dibujados. Pasó con el arreglo
+    # de la barra de escala, que quedó sin aplicarse hasta forzar la etapa a mano.
+    script_figuras = os.path.join(directorio_raiz, 'scripts', 'generar_figuras_informe.py')
     entradas_figuras = [p for p in ([mapa_rf] + mapas_perfiles + salidas_cruce +
-                                    salida_consenso + [comparacion_json, metricas_topk_json])
+                                    salida_consenso + [comparacion_json, metricas_topk_json,
+                                                       script_figuras])
                         if os.path.exists(p)]
-    if _esta_actualizado(entradas_figuras, figuras):
-        print("\n--- Etapa 15: Figuras cartográficas (7 elementos) --- (ya actualizado, se omite)")
-    else:
-        _correr_etapa("Etapa 15: Figuras cartográficas (7 elementos)", "generar_figuras_informe.py")
 
-    # --- Etapa 16: Assets del visor ---
+
+    if _esta_actualizado(entradas_figuras, figuras):
+        print("\n--- Etapa 16: Figuras cartográficas (7 elementos) --- (ya actualizado, se omite)")
+    else:
+        _correr_etapa("Etapa 16: Figuras cartográficas (7 elementos)", "generar_figuras_informe.py")
+
+    # --- Etapa 17: Assets del visor ---
     # Siempre se regenera: lee todos los resultados de las etapas anteriores y es liviana
     # (reprojecta/reduce a PNG chicos), así que no vale la pena mantener una lista larga de
     # dependencias para el chequeo incremental.
-    _correr_etapa("Etapa 16: Assets del visor", "generate_web_assets.py", ['--config', args.config])
+    _correr_etapa("Etapa 17: Assets del visor", "generate_web_assets.py", ['--config', args.config])
+    # Los assets de la zona transferida van a un manifest aparte: así el visor desplegado
+    # sigue funcionando aunque esa zona no se haya calculado nunca.
+    if args.con_transferencia and metricas_transf and os.path.exists(metricas_transf):
+        _correr_etapa("Etapa 17b: Assets del visor (transferencia)", "generate_web_assets.py",
+                      ['--config', args.config, '--zona', 'transferibilidad'])
 
-    # --- Etapa 17: Resumen final ---
+    # --- Etapa 18: Resumen final ---
     print("\n" + "=" * 70)
     print("Pipeline ejecutado correctamente.")
     if not motor_ok or not comparacion_ok:
         print("[AVISO] El motor Rust (solarpv-rs) no estaba disponible: se omitieron el "
               "rendimiento PV y/o la comparación fijo/seguidor. El resto de los resultados "
               "(mapa RF, perfiles AHP, SHAP, consenso, assets) sí se generaron completos.")
+    if not args.con_transferencia:
+        print("[NOTA] La evaluación de generalización sobre otra región no se ejecutó. "
+              "Añade --con-transferencia para incluirla.")
     print("Para ver los resultados en el visor local:")
     print("    streamlit run app/visor.py")
     print("=" * 70)

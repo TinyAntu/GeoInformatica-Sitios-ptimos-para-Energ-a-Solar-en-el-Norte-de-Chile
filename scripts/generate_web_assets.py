@@ -146,6 +146,9 @@ def _barra_categorica(cmap_name, etiquetas, out_path):
 def main():
     parser = argparse.ArgumentParser(description='Genera assets web (PNG+bounds) para el visor')
     parser.add_argument('--config', default='config.yaml')
+    parser.add_argument('--zona', default=None,
+                        help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"): '
+                             'lee sus resultados y escribe un manifest y unos PNG aparte.')
     args = parser.parse_args()
 
     with open(_ruta_abs(args.config), 'r', encoding='utf-8') as f:
@@ -153,35 +156,53 @@ def main():
 
     prefijo = config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
 
+    # Con --zona todo se lee del directorio de esa zona y se escribe en assets/<zona>/ con un
+    # manifest propio. Deliberadamente NO se mezcla con el manifest principal: así el visor
+    # desplegado sigue funcionando aunque la zona no se haya calculado nunca.
+    dir_datos = 'data/results'
+    sufijo = ''
+    subdir = ''
+    if args.zona:
+        bloque = config.get(args.zona) or {}
+        if not bloque:
+            print(f"  [ERROR] config.yaml no tiene el bloque '{args.zona}'.")
+            return 1
+        dir_datos = bloque.get('dir_resultados', f'data/results/{args.zona}')
+        prefijo = os.path.join(dir_datos, 'rendimiento')
+        sufijo = f'_{args.zona}'
+        subdir = args.zona
+
     # Definición de capas. modo: 'fijo01' (0–1), 'percentil' (contraste p2–p98),
     # 'categorico' (consenso 0–3, oculta el 0 = no apto y usa resampleo nearest).
     capas = [
         # Los 3 perfiles de aptitud (Brecha 6).
-        {"id": "balanceado", "ruta": "data/results/mapa_probabilidad_aptitud.tif",
+        {"id": "balanceado", "ruta": os.path.join(dir_datos, "mapa_probabilidad_aptitud.tif"),
          "cmap": "viridis", "unidad": "Aptitud ML — probabilidad (0–1)", "modo": "fijo01"},
-        {"id": "conservador", "ruta": "data/results/aptitud_conservador.tif",
+        {"id": "conservador", "ruta": os.path.join(dir_datos, "aptitud_conservador.tif"),
          "cmap": "viridis", "unidad": "Aptitud conservador (0–1)", "modo": "fijo01"},
-        {"id": "agresivo", "ruta": "data/results/aptitud_agresivo.tif",
+        {"id": "agresivo", "ruta": os.path.join(dir_datos, "aptitud_agresivo.tif"),
          "cmap": "viridis", "unidad": "Aptitud agresivo (0–1)", "modo": "fijo01"},
         # Producción física y cruce.
         {"id": "rendimiento", "ruta": prefijo + "_fijo_specific_yield.tif",
          "cmap": "inferno", "unidad": "Rendimiento (kWh/kWp/año)", "modo": "percentil"},
-        {"id": "cruce", "ruta": "data/results/aptitud_x_rendimiento.tif",
+        {"id": "cruce", "ruta": os.path.join(dir_datos, "aptitud_x_rendimiento.tif"),
          "cmap": "magma", "unidad": "Ranking aptitud × rendimiento (0–1)", "modo": "fijo01"},
         # Consenso/divergencia entre perfiles (Brecha 6, punto 4). cividis: secuencial y
         # ordinal, apta para daltonismo (reemplaza RdYlGn, ilegible en rojo-verde).
-        {"id": "consenso", "ruta": "data/results/consenso_perfiles.tif",
+        {"id": "consenso", "ruta": os.path.join(dir_datos, "consenso_perfiles.tif"),
          "cmap": "cividis", "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)", "modo": "categorico"},
         # Variable dominante por píxel según SHAP (Brecha 8). Orden = FEATURES.
         # Okabe-Ito: categórica nominal, apta para daltonismo (reemplaza tab10).
-        {"id": "dominante", "ruta": "data/results/shap_espacial_dominante.tif",
+        {"id": "dominante", "ruta": os.path.join(dir_datos, "shap_espacial_dominante.tif"),
          "cmap": "okabe_ito_gs", "unidad": "Variable dominante (SHAP)", "modo": "categorias",
          "categorias": ["Pendiente", "GHI", "Elevación", "Northness",
                         "Dist. transmisión", "Dist. almacenam.", "Dist. subestaciones"]},
     ]
 
-    assets_dir = _ruta_abs("app/assets")
+    assets_dir = _ruta_abs(os.path.join("app/assets", subdir))
     os.makedirs(assets_dir, exist_ok=True)
+    # Prefijo con el que el visor resuelve las rutas del manifest (siempre relativo a app/).
+    rel_assets = f"assets/{subdir}/" if subdir else "assets/"
     manifest = {}
 
     for capa in capas:
@@ -196,7 +217,7 @@ def main():
         resampling = Resampling.nearest if es_categorico else Resampling.bilinear
         mascara = None
         if cid == "rendimiento":
-            mascara = _ruta_abs("data/results/mapa_probabilidad_aptitud.tif")
+            mascara = _ruta_abs(os.path.join(dir_datos, "mapa_probabilidad_aptitud.tif"))
         arr, (sur, oeste, norte, este) = _reproyectar_para_web(
             src_path, resampling=resampling, clip_mask_path=mascara,
         )
@@ -221,8 +242,8 @@ def main():
             _barra_color(cmap, vmin, vmax, unidad, cbar)
 
         manifest[cid] = {
-            "png": f"assets/{cid}.png",
-            "colorbar": f"assets/{cid}_colorbar.png",
+            "png": f"{rel_assets}{cid}.png",
+            "colorbar": f"{rel_assets}{cid}_colorbar.png",
             "bounds": [[sur, oeste], [norte, este]],  # [[S,W],[N,E]] para folium
             "vmin": round(vmin, 2), "vmax": round(vmax, 2),
             "unidad": unidad, "cmap": cmap,
@@ -231,28 +252,44 @@ def main():
         }
         print(f"    -> {png} ({os.path.getsize(png)//1024} KB), rango [{vmin:.2f}, {vmax:.2f}]")
 
-    with open(os.path.join(assets_dir, "manifest.json"), "w", encoding="utf-8") as f:
+    # Los JSON van siempre en la raíz de app/assets (los PNG sí en el subdirectorio de la
+    # zona), para que el visor los encuentre sin tener que conocer la estructura interna.
+    dir_json = _ruta_abs("app/assets")
+    ruta_manifest = os.path.join(dir_json, f"manifest{sufijo}.json")
+    with open(ruta_manifest, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
-    print(f"\n  Manifest: {os.path.join(assets_dir, 'manifest.json')} ({len(manifest)} capas)")
+    print(f"\n  Manifest: {ruta_manifest} ({len(manifest)} capas)")
 
     # Empaqueta las estadísticas (T2/T3/T6) en app/assets para que el visor las tenga
     # también en la nube (los JSON originales viven bajo data/, que está en .gitignore).
     stats = {}
-    fuentes = {
-        "cruce": "data/results/cruce_aptitud_rendimiento.json",
-        "comparacion_montaje": "data/results/comparacion_montaje.json",
-        "shap": "data/results/shap_importancias.json",
-        "consenso": "data/results/consenso_perfiles.json",
-        "shap_espacial": "data/results/shap_espacial.json",
-    }
+    if args.zona:
+        fuentes = {
+            "transferibilidad": os.path.join(dir_datos, "metricas_transferibilidad.json"),
+            "consenso": os.path.join(dir_datos, "consenso_perfiles.json"),
+            "shap_espacial": os.path.join(dir_datos, "shap_espacial.json"),
+            "cruce": os.path.join(dir_datos, "cruce_aptitud_rendimiento.json"),
+        }
+    else:
+        fuentes = {
+            "cruce": "data/results/cruce_aptitud_rendimiento.json",
+            "comparacion_montaje": "data/results/comparacion_montaje.json",
+            "shap": "data/results/shap_importancias.json",
+            "consenso": "data/results/consenso_perfiles.json",
+            "shap_espacial": "data/results/shap_espacial.json",
+            # Necesario para dibujar los puntos A y B del gradiente de generalización en la
+            # pestaña de transferencia: son las cifras del norte, no de la zona evaluada.
+            "metricas_topk": "data/results/metricas_topk.json",
+        }
     for clave, ruta in fuentes.items():
         p = _ruta_abs(ruta)
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
                 stats[clave] = json.load(f)
-    with open(os.path.join(assets_dir, "stats.json"), "w", encoding="utf-8") as f:
+    ruta_stats = os.path.join(dir_json, f"stats{sufijo}.json")
+    with open(ruta_stats, "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2, ensure_ascii=False)
-    print(f"  Stats:    {os.path.join(assets_dir, 'stats.json')} ({len(stats)} secciones)")
+    print(f"  Stats:    {ruta_stats} ({len(stats)} secciones)")
     return 0
 
 

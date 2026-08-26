@@ -26,14 +26,27 @@ def _ruta_abs(ruta: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description='Consenso/divergencia entre perfiles (Etapa 10)')
     parser.add_argument('--config', default='config.yaml')
+    parser.add_argument('--zona', default=None,
+                        help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"). '
+                             'Sin este flag usa los artefactos de data/results, como siempre.')
     args = parser.parse_args()
 
     with open(_ruta_abs(args.config), 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
-    base = _ruta_abs('data/results/mapa_probabilidad_aptitud.tif')
-    conservador = _ruta_abs('data/results/aptitud_conservador.tif')
-    agresivo = _ruta_abs('data/results/aptitud_agresivo.tif')
+    # Los tres mapas del consenso deben venir de la MISMA zona: mezclar el RF de una región
+    # con los perfiles AHP de otra produciría un consenso sin sentido geográfico.
+    dir_datos = 'data/results'
+    if args.zona:
+        bloque = config.get(args.zona) or {}
+        if not bloque:
+            print(f"  [ERROR] config.yaml no tiene el bloque '{args.zona}'.")
+            return 1
+        dir_datos = bloque.get('dir_resultados', f'data/results/{args.zona}')
+
+    base = _ruta_abs(os.path.join(dir_datos, 'mapa_probabilidad_aptitud.tif'))
+    conservador = _ruta_abs(os.path.join(dir_datos, 'aptitud_conservador.tif'))
+    agresivo = _ruta_abs(os.path.join(dir_datos, 'aptitud_agresivo.tif'))
     percentil = config.get('consenso_perfiles', {}).get('percentil_apto', 90)
 
     for p, etiqueta in [(base, 'mapa RF (etapa 5)'), (conservador, 'perfil conservador (etapa 6)'),
@@ -42,8 +55,8 @@ def main():
             print(f"  [OMITIDA] Falta {os.path.basename(p)} ({etiqueta}). Corre el pipeline primero.")
             return 0
 
-    out_raster = _ruta_abs('data/results/consenso_perfiles.tif')
-    out_json = _ruta_abs('data/results/consenso_perfiles.json')
+    out_raster = _ruta_abs(os.path.join(dir_datos, 'consenso_perfiles.tif'))
+    out_json = _ruta_abs(os.path.join(dir_datos, 'consenso_perfiles.json'))
 
     print(f"Analizando consenso entre perfiles (top {100 - percentil}% por perfil)...")
     stats = analizar_consenso(base, conservador, agresivo, percentil, out_raster, out_json)

@@ -106,17 +106,35 @@ def get_rasterized_mask(gdf, dst_shape, dst_transform, fill=0, default_value=1):
 CODIGOS_NORTE = ['2', '3', '02', '03', 'II', 'III', 'Antofagasta', 'Atacama', 'ANTOFAGASTA', 'ATACAMA']
 
 
-def _filtrar_a_norte(gdf, regiones_norte, nombre=""):
-    """Recorta una capa vectorial a Antofagasta+Atacama con el mismo criterio que el
+def _filtrar_a_norte(gdf, regiones_norte, nombre="", codigos=None, modo='exacto'):
+    """Recorta una capa vectorial a la zona de estudio con el mismo criterio que el
     entrenamiento (src/sampling.py): filtra por columna REGION si existe; si no, recorta
     espacialmente contra las regiones. Sin este filtro, la inferencia calcularía distancias
-    contra infraestructura fuera de la zona de estudio que el modelo nunca vio al entrenar."""
+    contra infraestructura fuera de la zona de estudio que el modelo nunca vio al entrenar.
+
+    `codigos` permite evaluar el modelo sobre una región distinta de la de entrenamiento; por
+    defecto usa CODIGOS_NORTE, de modo que las llamadas existentes no cambian.
+
+    `modo` controla cómo se compara la columna REGION:
+      - 'exacto'    coincidencia exacta. Es lo que usa el entrenamiento y por tanto lo que
+                    hay que replicar para no introducir sesgo train/inferencia.
+      - 'compuesto' compara por tokens separados por ';'. La capa de transmisión codifica las
+                    líneas que cruzan fronteras como 'ATACAMA;COQUIMBO', y esas cadenas no
+                    coinciden con nada en modo exacto: el norte pierde así el 15,6 % de la red
+                    y Coquimbo el 47,1 %. Se ofrece para medir ese sesgo, no como default:
+                    cambiarlo por defecto desalinearía la inferencia del modelo entrenado.
+    """
     if 'REGION' in gdf.columns:
-        return gdf[
-            gdf['REGION'].astype(str).str.upper().str.strip().isin(
-                [str(c).upper().strip() for c in CODIGOS_NORTE]
+        objetivo = {str(c).upper().strip() for c in (codigos or CODIGOS_NORTE)}
+        col = gdf['REGION'].astype(str).str.upper().str.strip()
+        if modo == 'compuesto':
+            # fillna('') antes de map: la columna REGION trae nulos en algunas capas y, a
+            # diferencia de isin() —que los descarta sin ruido—, map() se los pasa al lambda.
+            pertenece = col.fillna('').map(
+                lambda v: bool(objetivo & {t.strip() for t in str(v).split(';')})
             )
-        ]
+            return gdf[pertenece.astype(bool)]
+        return gdf[col.isin(objetivo)]
     try:
         return gpd.clip(gdf, regiones_norte)
     except Exception as e:
@@ -124,8 +142,8 @@ def _filtrar_a_norte(gdf, regiones_norte, nombre=""):
         return gdf
 
 
-def calcular_distancia_a_capa(path, crs, grid_shape, transform, pixel_size_meters, regiones_norte, nombre=""):
-    """Carga una capa vectorial, la recorta a Antofagasta+Atacama (igual que en entrenamiento,
+def calcular_distancia_a_capa(path, crs, grid_shape, transform, pixel_size_meters, regiones_norte, nombre="", codigos=None, modo='exacto'):
+    """Carga una capa vectorial, la recorta a la zona de estudio (igual que en entrenamiento,
     ver src/sampling.py), la rasteriza sobre la grilla base y devuelve la distancia euclidiana
     (en metros) de cada píxel a la geometría más cercana de esa capa.
 
@@ -142,7 +160,7 @@ def calcular_distancia_a_capa(path, crs, grid_shape, transform, pixel_size_meter
     etiqueta = nombre or os.path.basename(path)
     print(f"  Cargando y calculando distancia euclidiana a {etiqueta}...")
     gdf = gpd.read_file(path).to_crs(crs)
-    gdf = _filtrar_a_norte(gdf, regiones_norte, nombre=etiqueta)
+    gdf = _filtrar_a_norte(gdf, regiones_norte, nombre=etiqueta, codigos=codigos, modo=modo)
     mask = get_rasterized_mask(gdf, grid_shape, transform, fill=0, default_value=1)
 
     if mask.max() == 0:

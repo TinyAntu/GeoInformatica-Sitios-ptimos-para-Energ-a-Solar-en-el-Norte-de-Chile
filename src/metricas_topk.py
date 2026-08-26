@@ -49,15 +49,24 @@ def _ruta(directorio_raiz, ruta):
     return ruta if os.path.isabs(ruta) else os.path.join(directorio_raiz, ruta)
 
 
-def cargar_regiones(config, directorio_raiz, crs):
-    """Carga Antofagasta+Atacama reproyectadas al CRS de la grilla."""
+def cargar_regiones(config, directorio_raiz, crs, regiones_estudio=None):
+    """Carga las regiones de la zona de estudio, reproyectadas al CRS de la grilla.
+
+    `regiones_estudio` permite apuntar a otra zona (p. ej. Coquimbo, para medir la
+    generalización del modelo). Si es None se toma del config y, en su defecto, de la
+    constante REGIONES_ESTUDIO, que conserva el comportamiento previo.
+    """
     ruta = _ruta(directorio_raiz, config['paths']['raw']['vectores']['regiones'])
+    if regiones_estudio is None:
+        regiones_estudio = (config.get('zona_estudio') or {}).get('regiones', REGIONES_ESTUDIO)
     regiones = gpd.read_file(ruta)
-    regiones = regiones[regiones['REGION'].isin(REGIONES_ESTUDIO)]
+    regiones = regiones[regiones['REGION'].isin(regiones_estudio)]
+    if len(regiones) == 0:
+        raise ValueError(f"Ninguna de las regiones {regiones_estudio} existe en {ruta}.")
     return regiones.to_crs(crs)
 
 
-def cargar_plantas(config, directorio_raiz, crs, ha_por_mw=None):
+def cargar_plantas(config, directorio_raiz, crs, ha_por_mw=None, regiones_estudio=None):
     """Carga las plantas fotovoltaicas recortadas a la zona de estudio.
 
     `Paneles.gdb` es una capa de PUNTOS (716 registros, área 0): no existe la huella real
@@ -85,7 +94,7 @@ def cargar_plantas(config, directorio_raiz, crs, ha_por_mw=None):
     plantas['geometry'] = plantas.geometry.make_valid()
     plantas = plantas[plantas.geometry.notna() & ~plantas.geometry.is_empty]
 
-    regiones = cargar_regiones(config, directorio_raiz, crs)
+    regiones = cargar_regiones(config, directorio_raiz, crs, regiones_estudio)
     plantas = gpd.clip(plantas, regiones)
     plantas = plantas[plantas.geometry.notna() & ~plantas.geometry.is_empty]
     plantas = plantas.reset_index(drop=True)

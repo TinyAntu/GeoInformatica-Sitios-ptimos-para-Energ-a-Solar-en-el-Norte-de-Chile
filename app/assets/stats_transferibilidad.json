@@ -1,0 +1,656 @@
+{
+  "transferibilidad": {
+    "zona": "transferibilidad",
+    "regiones": [
+      "Coquimbo"
+    ],
+    "modelo": "model_rf.pkl (entrenado en Antofagasta+Atacama, NO reentrenado)",
+    "resolucion_m": 500,
+    "supuesto_huella_ha_por_mw": 2.0,
+    "metricas": {
+      "n_pixeles_validos": 162164,
+      "n_plantas_evaluadas": 70,
+      "n_pixeles_marcados_por_plantas": 69,
+      "por_k": {
+        "0.5": {
+          "umbral_probabilidad": 0.75543,
+          "pct_area_seleccionada": 0.5,
+          "n_pixeles_top": 811,
+          "recall": 0.0857,
+          "plantas_capturadas": 6,
+          "precision_zonas": {
+            "n_zonas_candidatas": 97,
+            "n_zonas_con_planta": 5,
+            "precision": 0.0515,
+            "precision_base_azar": 0.003584,
+            "factor_enriquecimiento": 14.4,
+            "area_zona_mediana_km2": 0.5,
+            "area_zona_maxima_km2": 15.5
+          },
+          "precision_area": {
+            "precision": 0.007398,
+            "precision_base_azar": 0.00024,
+            "precision_techo_modelo_perfecto": 0.048089,
+            "pct_del_techo_alcanzado": 15.4,
+            "factor_enriquecimiento": 30.8,
+            "area_huella_km2": 9.75
+          }
+        },
+        "1": {
+          "umbral_probabilidad": 0.703157,
+          "pct_area_seleccionada": 1.0,
+          "n_pixeles_top": 1622,
+          "recall": 0.1571,
+          "plantas_capturadas": 11,
+          "precision_zonas": {
+            "n_zonas_candidatas": 109,
+            "n_zonas_con_planta": 8,
+            "precision": 0.0734,
+            "precision_base_azar": 0.006317,
+            "factor_enriquecimiento": 11.6,
+            "area_zona_mediana_km2": 0.5,
+            "area_zona_maxima_km2": 44.5
+          },
+          "precision_area": {
+            "precision": 0.006782,
+            "precision_base_azar": 0.00024,
+            "precision_techo_modelo_perfecto": 0.024044,
+            "pct_del_techo_alcanzado": 28.2,
+            "factor_enriquecimiento": 28.2,
+            "area_huella_km2": 9.75
+          }
+        },
+        "2": {
+          "umbral_probabilidad": 0.635239,
+          "pct_area_seleccionada": 2.0,
+          "n_pixeles_top": 3244,
+          "recall": 0.2286,
+          "plantas_capturadas": 16,
+          "precision_zonas": {
+            "n_zonas_candidatas": 133,
+            "n_zonas_con_planta": 8,
+            "precision": 0.0602,
+            "precision_base_azar": 0.010193,
+            "factor_enriquecimiento": 5.9,
+            "area_zona_mediana_km2": 0.5,
+            "area_zona_maxima_km2": 106.5
+          },
+          "precision_area": {
+            "precision": 0.003391,
+            "precision_base_azar": 0.00024,
+            "precision_techo_modelo_perfecto": 0.012022,
+            "pct_del_techo_alcanzado": 28.2,
+            "factor_enriquecimiento": 14.1,
+            "area_huella_km2": 9.75
+          }
+        },
+        "3": {
+          "umbral_probabilidad": 0.582596,
+          "pct_area_seleccionada": 3.0,
+          "n_pixeles_top": 4865,
+          "recall": 0.3429,
+          "plantas_capturadas": 24,
+          "precision_zonas": {
+            "n_zonas_candidatas": 133,
+            "n_zonas_con_planta": 12,
+            "precision": 0.0902,
+            "precision_base_azar": 0.015127,
+            "factor_enriquecimiento": 6.0,
+            "area_zona_mediana_km2": 0.5,
+            "area_zona_maxima_km2": 128.75
+          },
+          "precision_area": {
+            "precision": 0.002878,
+            "precision_base_azar": 0.00024,
+            "precision_techo_modelo_perfecto": 0.008016,
+            "pct_del_techo_alcanzado": 35.9,
+            "factor_enriquecimiento": 12.0,
+            "area_huella_km2": 9.75
+          }
+        },
+        "5": {
+          "umbral_probabilidad": 0.46964,
+          "pct_area_seleccionada": 5.0,
+          "n_pixeles_top": 8109,
+          "recall": 0.4429,
+          "plantas_capturadas": 31,
+          "precision_zonas": {
+            "n_zonas_candidatas": 66,
+            "n_zonas_con_planta": 13,
+            "precision": 0.197,
+            "precision_base_azar": 0.04683,
+            "factor_enriquecimiento": 4.2,
+            "area_zona_mediana_km2": 0.75,
+            "area_zona_maxima_km2": 346.5
+          },
+          "precision_area": {
+            "precision": 0.003453,
+            "precision_base_azar": 0.00024,
+            "precision_techo_modelo_perfecto": 0.004809,
+            "pct_del_techo_alcanzado": 71.8,
+            "factor_enriquecimiento": 14.4,
+            "area_huella_km2": 9.75
+          }
+        },
+        "7.5": {
+          "umbral_probabilidad": 0.317472,
+          "pct_area_seleccionada": 7.5,
+          "n_pixeles_top": 12163,
+          "recall": 0.6143,
+          "plantas_capturadas": 43,
+          "precision_zonas": {
+            "n_zonas_candidatas": 72,
+            "n_zonas_con_planta": 14,
+            "precision": 0.1944,
+            "precision_base_azar": 0.056797,
+            "factor_enriquecimiento": 3.4,
+            "area_zona_mediana_km2": 0.25,
+            "area_zona_maxima_km2": 691.0
+          },
+          "precision_area": {
+            "precision": 0.002713,
+            "precision_base_azar": 0.00024,
+            "precision_techo_modelo_perfecto": 0.003206,
+            "pct_del_techo_alcanzado": 84.6,
+            "factor_enriquecimiento": 11.3,
+            "area_huella_km2": 9.75
+          }
+        },
+        "10": {
+          "umbral_probabilidad": 0.2315,
+          "pct_area_seleccionada": 10.0,
+          "n_pixeles_top": 16217,
+          "recall": 0.6571,
+          "plantas_capturadas": 46,
+          "precision_zonas": {
+            "n_zonas_candidatas": 154,
+            "n_zonas_con_planta": 10,
+            "precision": 0.0649,
+            "precision_base_azar": 0.031314,
+            "factor_enriquecimiento": 2.1,
+            "area_zona_mediana_km2": 0.25,
+            "area_zona_maxima_km2": 872.25
+          },
+          "precision_area": {
+            "precision": 0.002035,
+            "precision_base_azar": 0.00024,
+            "precision_techo_modelo_perfecto": 0.002405,
+            "pct_del_techo_alcanzado": 84.6,
+            "factor_enriquecimiento": 8.5,
+            "area_huella_km2": 9.75
+          }
+        }
+      },
+      "resolucion_m": 500.0,
+      "regiones": [
+        "Coquimbo"
+      ],
+      "modo_filtro_region": "exacto",
+      "potencia_total_mw": 595.6,
+      "area_zona_km2": 40541.0
+    },
+    "covariate_shift": {
+      "slope": {
+        "entrenamiento": {
+          "min": 0.1505,
+          "p25": 1.3861,
+          "mediana": 2.5715,
+          "p75": 5.1293,
+          "max": 17.0916,
+          "media": 3.9566
+        },
+        "zona": {
+          "min": 0.2556,
+          "p25": 10.7024,
+          "mediana": 16.6762,
+          "p75": 22.879,
+          "max": 47.3752,
+          "media": 16.8927
+        },
+        "pct_fuera_de_rango": 48.15,
+        "pct_por_debajo_del_min": 0.0,
+        "pct_por_encima_del_max": 48.15,
+        "desplazamiento_medias_sd": 3.504
+      },
+      "ghi": {
+        "entrenamiento": {
+          "min": 196.6156,
+          "p25": 279.634,
+          "mediana": 289.6378,
+          "p75": 296.2934,
+          "max": 304.5755,
+          "media": 283.9935
+        },
+        "zona": {
+          "min": 169.9671,
+          "p25": 238.4446,
+          "mediana": 250.9772,
+          "p75": 259.7605,
+          "max": 283.9981,
+          "media": 246.4375
+        },
+        "pct_fuera_de_rango": 3.48,
+        "pct_por_debajo_del_min": 3.48,
+        "pct_por_encima_del_max": 0.0,
+        "desplazamiento_medias_sd": -2.02
+      },
+      "elev": {
+        "entrenamiento": {
+          "min": 19.7095,
+          "p25": 981.2764,
+          "mediana": 1454.7338,
+          "p75": 2215.5376,
+          "max": 3491.8245,
+          "media": 1578.6838
+        },
+        "zona": {
+          "min": 3.7286,
+          "p25": 643.5208,
+          "mediana": 1282.736,
+          "p75": 2852.7616,
+          "max": 6109.9697,
+          "media": 1733.1853
+        },
+        "pct_fuera_de_rango": 15.74,
+        "pct_por_debajo_del_min": 0.29,
+        "pct_por_encima_del_max": 15.45,
+        "desplazamiento_medias_sd": 0.182
+      },
+      "northness": {
+        "entrenamiento": {
+          "min": -1.0,
+          "p25": -0.3667,
+          "mediana": 0.2166,
+          "p75": 0.7185,
+          "max": 1.0,
+          "media": 0.1369
+        },
+        "zona": {
+          "min": -1.0,
+          "p25": -0.6499,
+          "mediana": 0.0203,
+          "p75": 0.6755,
+          "max": 1.0,
+          "media": 0.012
+        },
+        "pct_fuera_de_rango": 0.34,
+        "pct_por_debajo_del_min": 0.26,
+        "pct_por_encima_del_max": 0.08,
+        "desplazamiento_medias_sd": -0.195
+      },
+      "dist_transmision": {
+        "entrenamiento": {
+          "min": 4.7302,
+          "p25": 1152.3862,
+          "mediana": 5036.8662,
+          "p75": 10293.8146,
+          "max": 19923.4755,
+          "media": 6450.0842
+        },
+        "zona": {
+          "min": 0.0,
+          "p25": 5000.0,
+          "mediana": 12658.9893,
+          "p75": 24382.3711,
+          "max": 60508.2656,
+          "media": 15844.9492
+        },
+        "pct_fuera_de_rango": 35.2,
+        "pct_por_debajo_del_min": 2.13,
+        "pct_por_encima_del_max": 33.07,
+        "desplazamiento_medias_sd": 1.649
+      },
+      "dist_almacen": {
+        "entrenamiento": {
+          "min": 239.7999,
+          "p25": 24732.3857,
+          "mediana": 47982.3801,
+          "p75": 87285.2188,
+          "max": 229992.0002,
+          "media": 62673.8754
+        },
+        "zona": {
+          "min": 0.0,
+          "p25": 79134.3828,
+          "mediana": 116035.5547,
+          "p75": 170506.5938,
+          "max": 253886.2969,
+          "media": 123181.0376
+        },
+        "pct_fuera_de_rango": 1.88,
+        "pct_por_debajo_del_min": 0.0,
+        "pct_por_encima_del_max": 1.88,
+        "desplazamiento_medias_sd": 1.195
+      },
+      "dist_subestaciones": {
+        "entrenamiento": {
+          "min": 61.5337,
+          "p25": 4504.028,
+          "mediana": 11156.3891,
+          "p75": 18573.7889,
+          "max": 41665.0164,
+          "media": 12128.9524
+        },
+        "zona": {
+          "min": 0.0,
+          "p25": 10688.7793,
+          "mediana": 17734.1484,
+          "p75": 27735.3574,
+          "max": 62018.1406,
+          "media": 20103.8234
+        },
+        "pct_fuera_de_rango": 6.57,
+        "pct_por_debajo_del_min": 0.04,
+        "pct_por_encima_del_max": 6.53,
+        "desplazamiento_medias_sd": 0.897
+      }
+    },
+    "mapa_aptitud": "data/results/coquimbo/mapa_probabilidad_aptitud.tif",
+    "nota_lectura": "El techo de precisión depende de la razón huella/área propuesta, que es propia de cada zona: comparar la precisión cruda entre regiones no informa. Lo comparable es 'pct_del_techo_alcanzado' y el factor de enriquecimiento.",
+    "nota_extrapolacion": "Un Random Forest no extrapola: fuera del rango de entrenamiento devuelve el valor de la hoja más cercana. Leer 'covariate_shift.pct_fuera_de_rango' antes de atribuir cualquier caída a la geografía.",
+    "sensibilidad_filtro_lineas": {
+      "descripcion": "El filtro exacto descarta las líneas cuyo campo REGION es una cadena compuesta ('ATACAMA;COQUIMBO'). El modo compuesto las rescata. La diferencia acota cuánto del resultado principal es artefacto del filtro.",
+      "metricas": {
+        "n_pixeles_validos": 162164,
+        "n_plantas_evaluadas": 70,
+        "n_pixeles_marcados_por_plantas": 69,
+        "por_k": {
+          "0.5": {
+            "umbral_probabilidad": 0.764731,
+            "pct_area_seleccionada": 0.5,
+            "n_pixeles_top": 811,
+            "recall": 0.1286,
+            "plantas_capturadas": 9,
+            "precision_zonas": {
+              "n_zonas_candidatas": 97,
+              "n_zonas_con_planta": 8,
+              "precision": 0.0825,
+              "precision_base_azar": 0.003585,
+              "factor_enriquecimiento": 23.0,
+              "area_zona_mediana_km2": 0.5,
+              "area_zona_maxima_km2": 14.75
+            },
+            "precision_area": {
+              "precision": 0.024661,
+              "precision_base_azar": 0.00024,
+              "precision_techo_modelo_perfecto": 0.048089,
+              "pct_del_techo_alcanzado": 51.3,
+              "factor_enriquecimiento": 102.5,
+              "area_huella_km2": 9.75
+            }
+          },
+          "1": {
+            "umbral_probabilidad": 0.713541,
+            "pct_area_seleccionada": 1.0,
+            "n_pixeles_top": 1622,
+            "recall": 0.2,
+            "plantas_capturadas": 14,
+            "precision_zonas": {
+              "n_zonas_candidatas": 109,
+              "n_zonas_con_planta": 10,
+              "precision": 0.0917,
+              "precision_base_azar": 0.006321,
+              "factor_enriquecimiento": 14.5,
+              "area_zona_mediana_km2": 0.5,
+              "area_zona_maxima_km2": 40.5
+            },
+            "precision_area": {
+              "precision": 0.015413,
+              "precision_base_azar": 0.00024,
+              "precision_techo_modelo_perfecto": 0.024044,
+              "pct_del_techo_alcanzado": 64.1,
+              "factor_enriquecimiento": 64.1,
+              "area_huella_km2": 9.75
+            }
+          },
+          "2": {
+            "umbral_probabilidad": 0.647398,
+            "pct_area_seleccionada": 2.0,
+            "n_pixeles_top": 3244,
+            "recall": 0.2571,
+            "plantas_capturadas": 18,
+            "precision_zonas": {
+              "n_zonas_candidatas": 134,
+              "n_zonas_con_planta": 9,
+              "precision": 0.0672,
+              "precision_base_azar": 0.010132,
+              "factor_enriquecimiento": 6.6,
+              "area_zona_mediana_km2": 0.5,
+              "area_zona_maxima_km2": 98.5
+            },
+            "precision_area": {
+              "precision": 0.007707,
+              "precision_base_azar": 0.00024,
+              "precision_techo_modelo_perfecto": 0.012022,
+              "pct_del_techo_alcanzado": 64.1,
+              "factor_enriquecimiento": 32.0,
+              "area_huella_km2": 9.75
+            }
+          },
+          "3": {
+            "umbral_probabilidad": 0.59685,
+            "pct_area_seleccionada": 3.0,
+            "n_pixeles_top": 4865,
+            "recall": 0.3429,
+            "plantas_capturadas": 24,
+            "precision_zonas": {
+              "n_zonas_candidatas": 155,
+              "n_zonas_con_planta": 12,
+              "precision": 0.0774,
+              "precision_base_azar": 0.013001,
+              "factor_enriquecimiento": 6.0,
+              "area_zona_mediana_km2": 0.5,
+              "area_zona_maxima_km2": 124.0
+            },
+            "precision_area": {
+              "precision": 0.005755,
+              "precision_base_azar": 0.00024,
+              "precision_techo_modelo_perfecto": 0.008016,
+              "pct_del_techo_alcanzado": 71.8,
+              "factor_enriquecimiento": 23.9,
+              "area_huella_km2": 9.75
+            }
+          },
+          "5": {
+            "umbral_probabilidad": 0.498412,
+            "pct_area_seleccionada": 5.0,
+            "n_pixeles_top": 8109,
+            "recall": 0.4429,
+            "plantas_capturadas": 31,
+            "precision_zonas": {
+              "n_zonas_candidatas": 91,
+              "n_zonas_con_planta": 15,
+              "precision": 0.1648,
+              "precision_base_azar": 0.03491,
+              "factor_enriquecimiento": 4.7,
+              "area_zona_mediana_km2": 0.75,
+              "area_zona_maxima_km2": 265.75
+            },
+            "precision_area": {
+              "precision": 0.0037,
+              "precision_base_azar": 0.00024,
+              "precision_techo_modelo_perfecto": 0.004809,
+              "pct_del_techo_alcanzado": 76.9,
+              "factor_enriquecimiento": 15.4,
+              "area_huella_km2": 9.75
+            }
+          },
+          "7.5": {
+            "umbral_probabilidad": 0.357254,
+            "pct_area_seleccionada": 7.5,
+            "n_pixeles_top": 12163,
+            "recall": 0.6,
+            "plantas_capturadas": 42,
+            "precision_zonas": {
+              "n_zonas_candidatas": 73,
+              "n_zonas_con_planta": 14,
+              "precision": 0.1918,
+              "precision_base_azar": 0.057153,
+              "factor_enriquecimiento": 3.4,
+              "area_zona_mediana_km2": 0.75,
+              "area_zona_maxima_km2": 676.75
+            },
+            "precision_area": {
+              "precision": 0.002631,
+              "precision_base_azar": 0.00024,
+              "precision_techo_modelo_perfecto": 0.003206,
+              "pct_del_techo_alcanzado": 82.1,
+              "factor_enriquecimiento": 10.9,
+              "area_huella_km2": 9.75
+            }
+          },
+          "10": {
+            "umbral_probabilidad": 0.250049,
+            "pct_area_seleccionada": 10.0,
+            "n_pixeles_top": 16217,
+            "recall": 0.6571,
+            "plantas_capturadas": 46,
+            "precision_zonas": {
+              "n_zonas_candidatas": 148,
+              "n_zonas_con_planta": 10,
+              "precision": 0.0676,
+              "precision_base_azar": 0.032839,
+              "factor_enriquecimiento": 2.1,
+              "area_zona_mediana_km2": 0.5,
+              "area_zona_maxima_km2": 874.75
+            },
+            "precision_area": {
+              "precision": 0.002035,
+              "precision_base_azar": 0.00024,
+              "precision_techo_modelo_perfecto": 0.002405,
+              "pct_del_techo_alcanzado": 84.6,
+              "factor_enriquecimiento": 8.5,
+              "area_huella_km2": 9.75
+            }
+          }
+        },
+        "resolucion_m": 500.0,
+        "regiones": [
+          "Coquimbo"
+        ],
+        "modo_filtro_region": "compuesto",
+        "potencia_total_mw": 595.6,
+        "area_zona_km2": 40541.0
+      }
+    }
+  },
+  "consenso": {
+    "percentil_apto": 90,
+    "umbrales_por_perfil": {
+      "conservador": 0.8207,
+      "balanceado": 0.2315,
+      "agresivo": 0.7654
+    },
+    "celdas_validas": 162164,
+    "apto_por_perfil": {
+      "conservador": 16217,
+      "balanceado": 16217,
+      "agresivo": 16217
+    },
+    "consenso_3_perfiles": {
+      "celdas": 1782,
+      "pct": 1.1
+    },
+    "divergencia_2_perfiles": {
+      "celdas": 9709,
+      "pct": 5.99
+    },
+    "divergencia_1_perfil": {
+      "celdas": 23887,
+      "pct": 14.73
+    },
+    "no_apto": {
+      "celdas": 126786,
+      "pct": 78.18
+    },
+    "correlacion_rango_entre_perfiles": {
+      "conservador_vs_balanceado": 0.6622,
+      "conservador_vs_agresivo": 0.3452,
+      "balanceado_vs_agresivo": -0.1005
+    },
+    "interpretacion": "El 1.1% de la zona válida es apta en los 3 perfiles (consenso: robusto ante la preferencia del stakeholder); 20.72% es apta solo en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado). Nota metodológica: el umbral relativo por percentil fija la MISMA proporción de área apta (10%) en los 3 perfiles por construcción — este 'consenso' mide superposición entre conjuntos top-K de igual tamaño, no una medida absoluta de calidad territorial. La correlación de Spearman entre perfiles (más abajo) complementa esta lectura con la magnitud del acuerdo, no solo el solapamiento binario.",
+    "salida_raster": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/consenso_perfiles.tif"
+  },
+  "shap_espacial": {
+    "resolucion_m": 500,
+    "n_pixeles": 162164,
+    "contribucion_media_shap": {
+      "slope": -0.07857,
+      "ghi": 0.00295,
+      "elev": -0.01364,
+      "northness": -0.00489,
+      "dist_transmision": -0.11591,
+      "dist_almacen": -0.02158,
+      "dist_subestaciones": -0.18718
+    },
+    "pixeles_por_variable_dominante": {
+      "slope": 3521,
+      "ghi": 10,
+      "elev": 3,
+      "northness": 3,
+      "dist_transmision": 27092,
+      "dist_almacen": 0,
+      "dist_subestaciones": 131535
+    },
+    "leyenda_dominante": {
+      "0": "slope",
+      "1": "ghi",
+      "2": "elev",
+      "3": "northness",
+      "4": "dist_transmision",
+      "5": "dist_almacen",
+      "6": "dist_subestaciones"
+    },
+    "rasters": {
+      "slope": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_slope.tif",
+      "ghi": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_ghi.tif",
+      "elev": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_elev.tif",
+      "northness": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_northness.tif",
+      "dist_transmision": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dist_transmision.tif",
+      "dist_almacen": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dist_almacen.tif",
+      "dist_subestaciones": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dist_subestaciones.tif",
+      "dominante": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dominante.tif"
+    },
+    "waterfalls": [
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top1.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top2.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top3.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top4.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top5.png"
+    ]
+  },
+  "cruce": {
+    "umbral_probabilidad": 0.7,
+    "celdas_validas": 162164,
+    "celdas_aptas": 1684,
+    "pct_aptas": 1.04,
+    "rendimiento_region": {
+      "n": 162164,
+      "min": 763.7,
+      "media": 1352.0,
+      "p50": 1351.2,
+      "p90": 1599.8,
+      "max": 1639.8
+    },
+    "rendimiento_aptas": {
+      "n": 1684,
+      "min": 1000.2,
+      "media": 1385.7,
+      "p50": 1377.7,
+      "p90": 1612.8,
+      "max": 1639.6
+    },
+    "ganancia_aptas_pct": 2.5,
+    "sensibilidad_formula_combinacion": {
+      "formula_usada": "producto: probabilidad_RF * yield_norm",
+      "alternativa": "media aritmética ponderada 50/50",
+      "spearman_ranking_vs_alternativa": 0.7157,
+      "overlap_top_1pct_pct": 93.5,
+      "nota": "Si el spearman y el overlap son altos, el ranking (y los top-N sitios que se reporten) son robustos a esta elección de fórmula; si son bajos, la elección de 'producto' pesa más de lo que parece y debería justificarse con más alternativas antes de presentarse como definitiva."
+    },
+    "salidas": {
+      "rendimiento_en_aptas": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/rendimiento_en_aptas.tif",
+      "aptitud_x_rendimiento": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/aptitud_x_rendimiento.tif"
+    }
+  }
+}

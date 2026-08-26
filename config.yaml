@@ -85,6 +85,57 @@ criterios:
 preprocesamiento:
   dem_resolucion_m: 90
 
+# Zona con la que se ENTRENÓ el modelo. Define a qué regiones se recorta la grilla de
+# inferencia y la infraestructura contra la que se miden las distancias.
+# Se declaran dos formas del mismo dato porque las capas no son consistentes: REGIONES_v1.shp
+# usa nombres completos ('Antofagasta'), mientras Paneles.gdb, Subestaciones y Almacenamiento
+# usan códigos numéricos ('02'). El filtro prueba la columna REGION contra `codigos` y, si la
+# capa no tiene esa columna, recorta espacialmente contra `regiones`.
+zona_estudio:
+  regiones: ["Antofagasta", "Atacama"]
+  codigos:  [2, 3, "2", "3", "02", "03", "II", "III", "Antofagasta", "Atacama"]
+
+# Evaluación de GENERALIZACIÓN: aplicar el modelo YA ENTRENADO sobre una región que no
+# participó del entrenamiento, sin reentrenar nada (scripts/run_zona.py --zona transferibilidad).
+#
+# Todos los productos van a un directorio propio: los scripts del pipeline escriben en rutas
+# fijas de data/results/ y correrlos sobre otra zona sobrescribiría los artefactos del norte
+# que cita el informe.
+#
+# El DEM se bajó de USGS/SRTMGL1_003 vía Google Earth Engine (ver obtencion_datos.py), que es
+# el MISMO producto NASA que las teselas .hgt del norte: 1 arco-segundo (~30 m), EPSG:4326,
+# int16. Así recorre exactamente la misma cadena que el norte (fusión -> reproyección a 32719
+# a 90 m bilinear -> surtgis). Esto no es un detalle de rendimiento: la pendiente depende de
+# la resolución del DEM, así que si Coquimbo llegara a slope por otro camino la prueba mediría
+# procesamiento en vez de geografía.
+#
+# `dem_nodata: 0` porque la exportación de GEE no aplicó unmask(-32768) y dejó el exterior del
+# polígono en 0 (37,8 % del ráster). Dentro de la región solo el 0,17 % de las celdas vale
+# exactamente 0 (~69 km² de franja costera), así que el costo de tratarlo como nodata es nulo.
+transferibilidad:
+  regiones: ["Coquimbo"]
+  codigos:  [4, "4", "04", "IV", "Coquimbo"]
+  dem_folders:
+    - "data/raw/Norte_Region_IV_DEM"
+  dem_patron:  "*.tif"
+  dem_nodata:  0
+  dem:      "data/processed/dem_coquimbo_32719.tif"
+  slope:    "data/processed/slope_coquimbo.tif"
+  aspect:   "data/processed/aspect_coquimbo.tif"
+  # Misma resolución de grilla que el LORO del norte (shap_espacial/perfiles_inversion), para
+  # que las cifras sean comparables sin corregir por resolución.
+  resolucion_m: 500
+  ha_por_mw: 2.0
+  dir_resultados: "data/results/coquimbo"
+  dir_figuras:    "figures/coquimbo"
+  # Latitud/longitud de referencia para el motor Rust. Solo fija el encabezado de la
+  # simulación: con `per_cell_lat: true` la geometría solar se recalcula celda a celda.
+  # El MONTAJE (tilt 23°, azimut, gcr) NO se cambia a propósito, aunque 23° no sea el óptimo
+  # de esta latitud: el cruce aptitud-rendimiento usa Spearman, que es de rangos, y mantener
+  # el montaje fijo entre zonas evita mezclar geografía con elección de diseño.
+  lat: -30.6
+  lon: -70.8
+
 # Parámetros de validación espacial (SBCV / LOROCV)
 validacion:
   tamano_bloque_km: 30   # Lado del bloque cuadrado para Spatial Block CV (en km)

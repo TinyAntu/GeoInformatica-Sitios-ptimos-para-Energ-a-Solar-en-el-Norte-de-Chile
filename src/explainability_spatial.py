@@ -30,11 +30,39 @@ from src.features import FEATURES
 NODATA = -9999.0
 
 
-def _construir_features(config, resolucion_m):
+def zona_de_config(config, clave="zona_estudio"):
+    """Describe una zona: regiones, códigos y rásters de terreno.
+
+    `clave` selecciona el bloque de config.yaml: "zona_estudio" es la zona con la que se
+    entrenó el modelo, "transferibilidad" la región nueva sobre la que se mide la
+    generalización. El fallback a Antofagasta+Atacama conserva el comportamiento previo si el
+    bloque no existe.
+    """
+    paths_processed = config["paths"]["processed"]
+    bloque = config.get(clave) or {}
+    return {
+        "clave": clave,
+        "regiones": bloque.get("regiones", ["Antofagasta", "Atacama"]),
+        "codigos": bloque.get("codigos"),  # None => CODIGOS_NORTE en generate_suitability_map
+        "dem": bloque.get("dem", paths_processed["dem_32719"]),
+        "slope": bloque.get("slope", paths_processed["slope"]),
+        "aspect": bloque.get("aspect", paths_processed["aspect"]),
+        "modo_region": bloque.get("modo_region", "exacto"),
+    }
+
+
+def _construir_features(config, resolucion_m, zona=None):
     """Construye (crs, transform, width, height, valid_mask, X_pred) en el orden FEATURES.
 
     Reutiliza las funciones de generate_suitability_map (import perezoso para no exigir el
     path al importar el módulo). Replica el mismo apilado y el mismo assert de orden.
+
+    `zona` (ver `zona_de_config`) permite armar la grilla de otra región para evaluar la
+    generalización del modelo sin reentrenarlo. Si es None se usa la zona de entrenamiento,
+    de modo que las llamadas existentes no cambian de comportamiento.
+
+    El GHI no depende de la zona: GHI.tif es nacional (lat -17 a -56) y queda acotado por la
+    máscara regional, igual que las capas de infraestructura.
     """
     import geopandas as gpd
     from rasterio.warp import Resampling
@@ -45,9 +73,11 @@ def _construir_features(config, resolucion_m):
 
     paths_raw = config["paths"]["raw"]
     paths_processed = config["paths"]["processed"]
-    dem_path = paths_processed["dem_32719"]
-    slope_path = paths_processed["slope"]
-    aspect_path = paths_processed["aspect"]
+    if zona is None:
+        zona = zona_de_config(config)
+    dem_path = zona["dem"]
+    slope_path = zona["slope"]
+    aspect_path = zona["aspect"]
     ghi_path = paths_processed["ghi_32719"]
 
     crs, transform, width, height = construir_grilla_referencia(dem_path, resolucion_m)
@@ -63,16 +93,23 @@ def _construir_features(config, resolucion_m):
         northness = np.cos(np.radians(aspect))
 
     # Regiones antes que las distancias: calcular_distancia_a_capa necesita `regiones` para
-    # recortar la infraestructura a Antofagasta+Atacama (mismo criterio que el entrenamiento
+    # recortar la infraestructura a la zona de estudio (mismo criterio que el entrenamiento
     # y que scripts/generate_suitability_map.py).
     regiones = gpd.read_file(paths_raw["vectores"]["regiones"])
-    regiones = regiones[regiones["REGION"].isin(["Antofagasta", "Atacama"])].to_crs(crs)
+    regiones = regiones[regiones["REGION"].isin(zona["regiones"])].to_crs(crs)
+    if len(regiones) == 0:
+        raise ValueError(
+            f"Ninguna de las regiones {zona['regiones']} existe en "
+            f"{paths_raw['vectores']['regiones']}. La columna REGION usa nombres completos "
+            "(p. ej. 'Coquimbo'), no códigos: revisa el bloque del config."
+        )
     region_mask = get_rasterized_mask(regiones, grid_shape, transform, fill=0, default_value=1)
 
     px = transform[0]
-    d_trans = calcular_distancia_a_capa(paths_raw["vectores"]["lineas"], crs, grid_shape, transform, px, regiones, nombre="transmisión")
-    d_almac = calcular_distancia_a_capa(paths_raw["vectores"]["almacenamiento"], crs, grid_shape, transform, px, regiones, nombre="almacenamiento")
-    d_subes = calcular_distancia_a_capa(paths_raw["vectores"]["subestaciones"], crs, grid_shape, transform, px, regiones, nombre="subestaciones")
+    kw = {"codigos": zona["codigos"], "modo": zona["modo_region"]}
+    d_trans = calcular_distancia_a_capa(paths_raw["vectores"]["lineas"], crs, grid_shape, transform, px, regiones, nombre="transmisión", **kw)
+    d_almac = calcular_distancia_a_capa(paths_raw["vectores"]["almacenamiento"], crs, grid_shape, transform, px, regiones, nombre="almacenamiento", **kw)
+    d_subes = calcular_distancia_a_capa(paths_raw["vectores"]["subestaciones"], crs, grid_shape, transform, px, regiones, nombre="subestaciones", **kw)
 
     valid = ((region_mask == 1) & ~np.isnan(ghi) & ~np.isnan(elev) & ~np.isnan(slope)
              & ~np.isnan(northness) & ~np.isnan(d_trans) & ~np.isnan(d_almac) & ~np.isnan(d_subes))
@@ -97,10 +134,18 @@ def _escribir_raster(valores, valid, base_meta, path):
         dst.write(grid, 1)
 
 
-def generar_mapas_shap(config, model_path, resolucion_m, out_dir, figures_dir, top_n=5):
-    """Genera los rasters SHAP por variable, el mapa dominante y los waterfall Top-N."""
+def generar_mapas_shap(config, model_path, resolucion_m, out_dir, figures_dir, top_n=5,
+                       zona=None):
+    """Genera los rasters SHAP por variable, el mapa dominante y los waterfall Top-N.
+
+    `zona` (ver `zona_de_config`) permite explicar el modelo sobre una región distinta de la
+    de entrenamiento. Es la única vía de "importancia de variables" disponible fuera de la
+    zona de entrenamiento: el SHAP global de src/explainability.py necesita el dataset
+    etiquetado de 420 muestras, que no existe para una región nueva.
+    """
     model = joblib.load(model_path)
-    crs, transform, width, height, valid, X = _construir_features(config, resolucion_m)
+    crs, transform, width, height, valid, X = _construir_features(config, resolucion_m,
+                                                                  zona=zona)
     if len(X) == 0:
         raise ValueError("No hay píxeles válidos para calcular SHAP espacial.")
 

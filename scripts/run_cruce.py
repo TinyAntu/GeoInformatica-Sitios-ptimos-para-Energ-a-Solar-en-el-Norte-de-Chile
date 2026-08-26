@@ -27,17 +27,30 @@ def _ruta_abs(ruta: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description='Cruce aptitud x rendimiento (Etapa 9)')
     parser.add_argument('--config', default='config.yaml', help='Ruta al archivo de configuración')
+    parser.add_argument('--zona', default=None,
+                        help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"): '
+                             'cruza los artefactos de esa zona y escribe en su directorio.')
     args = parser.parse_args()
 
     with open(_ruta_abs(args.config), 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
-    # Rutas de entrada (mismas convenciones que el resto del pipeline).
-    aptitud_path = _ruta_abs('data/results/mapa_probabilidad_aptitud.tif')
-    cfg_solar = config.get('solarpv', {})
+    # Rutas de entrada (mismas convenciones que el resto del pipeline). Ambos mapas deben
+    # venir de la MISMA zona: cruzar la aptitud de una región con el rendimiento de otra
+    # produciría un ranking sin correspondencia espacial.
+    dir_datos = 'data/results'
+    prefijo_rend = config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
+    if args.zona:
+        bloque = config.get(args.zona) or {}
+        if not bloque:
+            print(f"  [ERROR] config.yaml no tiene el bloque '{args.zona}'.")
+            return 1
+        dir_datos = bloque.get('dir_resultados', f'data/results/{args.zona}')
+        prefijo_rend = os.path.join(dir_datos, 'rendimiento')
+
+    aptitud_path = _ruta_abs(os.path.join(dir_datos, 'mapa_probabilidad_aptitud.tif'))
     # El montaje fijo es el caso base para el cruce (T3 agregará el seguidor).
-    rendimiento_path = _ruta_abs(cfg_solar.get('out_prefix', 'data/results/rendimiento')
-                                 + '_fijo_specific_yield.tif')
+    rendimiento_path = _ruta_abs(prefijo_rend + '_fijo_specific_yield.tif')
 
     # Umbral de aptitud: única fuente de verdad en postgis_validation.prob_min.
     umbral = config.get('postgis_validation', {}).get('prob_min', 0.70)
@@ -51,9 +64,9 @@ def main():
               "Genera primero con: python scripts/run_solar_yield.py --config config.yaml")
         return 0
 
-    out_en_aptas = _ruta_abs('data/results/rendimiento_en_aptas.tif')
-    out_ranking = _ruta_abs('data/results/aptitud_x_rendimiento.tif')
-    out_json = _ruta_abs('data/results/cruce_aptitud_rendimiento.json')
+    out_en_aptas = _ruta_abs(os.path.join(dir_datos, 'rendimiento_en_aptas.tif'))
+    out_ranking = _ruta_abs(os.path.join(dir_datos, 'aptitud_x_rendimiento.tif'))
+    out_json = _ruta_abs(os.path.join(dir_datos, 'cruce_aptitud_rendimiento.json'))
 
     print(f"Cruzando aptitud (>= {umbral}) x rendimiento...")
     stats = cruzar(aptitud_path, rendimiento_path, umbral, out_en_aptas, out_ranking, out_json)

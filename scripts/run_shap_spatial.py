@@ -29,6 +29,10 @@ def main():
     parser.add_argument('--config', default='config.yaml')
     parser.add_argument('--regenerar', action='store_true',
                         help='Fuerza recalcular aunque el resultado ya esté actualizado')
+    parser.add_argument('--zona', default=None,
+                        help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"). '
+                             'Sin este flag explica la zona de entrenamiento y escribe en '
+                             'data/results, como siempre.')
     args = parser.parse_args()
 
     ruta_config = _ruta_abs(args.config)
@@ -46,6 +50,22 @@ def main():
     out_dir = _ruta_abs('data/results')
     figures_dir = _ruta_abs('figures')
 
+    # Con --zona todo se redirige a directorios propios: los nombres de salida son fijos y
+    # escribir otra región en data/results sobrescribiría los artefactos del norte.
+    zona = None
+    if args.zona:
+        from src.explainability_spatial import zona_de_config
+        bloque = config.get(args.zona) or {}
+        if not bloque:
+            print(f"  [ERROR] config.yaml no tiene el bloque '{args.zona}'.")
+            return 1
+        zona = zona_de_config(config, args.zona)
+        resolucion_m = bloque.get('resolucion_m', resolucion_m)
+        out_dir = _ruta_abs(bloque.get('dir_resultados', f'data/results/{args.zona}'))
+        figures_dir = _ruta_abs(bloque.get('dir_figuras', f'figures/{args.zona}'))
+        os.makedirs(out_dir, exist_ok=True)
+        os.makedirs(figures_dir, exist_ok=True)
+
     # Esta etapa es la más cara del pipeline (millones de píxeles vía TreeExplainer): se
     # salta si el resultado ya es más nuevo que el modelo y la config, igual que cuando
     # corre dentro de run_pipeline.py (que usa el mismo _esta_actualizado).
@@ -55,7 +75,8 @@ def main():
         return 0
 
     print(f"Generando mapas SHAP espaciales (resolución {resolucion_m} m, Top-{top_n} sitios)...")
-    res = generar_mapas_shap(config, model_path, resolucion_m, out_dir, figures_dir, top_n=top_n)
+    res = generar_mapas_shap(config, model_path, resolucion_m, out_dir, figures_dir,
+                             top_n=top_n, zona=zona)
 
     print(f"\n  Píxeles explicados: {res['n_pixeles']:,}")
     print("  Contribución media SHAP por variable:")
