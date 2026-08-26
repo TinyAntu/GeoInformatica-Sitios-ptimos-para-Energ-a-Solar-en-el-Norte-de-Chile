@@ -2,8 +2,8 @@
   "cruce": {
     "umbral_probabilidad": 0.7,
     "celdas_validas": 20184890,
-    "celdas_aptas": 582331,
-    "pct_aptas": 2.88,
+    "celdas_aptas": 509858,
+    "pct_aptas": 2.53,
     "rendimiento_region": {
       "n": 20184890,
       "min": 247.7,
@@ -13,45 +13,55 @@
       "max": 1967.1
     },
     "rendimiento_aptas": {
-      "n": 582331,
-      "min": 272.0,
-      "media": 1405.1,
-      "p50": 1529.3,
-      "p90": 1949.6,
+      "n": 509858,
+      "min": 250.8,
+      "media": 1404.6,
+      "p50": 1529.2,
+      "p90": 1949.3,
       "max": 1967.1
     },
-    "ganancia_aptas_pct": 0.85,
+    "ganancia_aptas_pct": 0.81,
+    "sensibilidad_formula_combinacion": {
+      "formula_usada": "producto: probabilidad_RF * yield_norm",
+      "alternativa": "media aritmética ponderada 50/50",
+      "spearman_ranking_vs_alternativa": 0.5573,
+      "overlap_top_1pct_pct": 97.3,
+      "nota": "Si el spearman y el overlap son altos, el ranking (y los top-N sitios que se reporten) son robustos a esta elección de fórmula; si son bajos, la elección de 'producto' pesa más de lo que parece y debería justificarse con más alternativas antes de presentarse como definitiva."
+    },
     "salidas": {
-      "rendimiento_en_aptas": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_en_aptas.tif",
-      "aptitud_x_rendimiento": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/aptitud_x_rendimiento.tif"
+      "rendimiento_en_aptas": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_en_aptas.tif",
+      "aptitud_x_rendimiento": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/aptitud_x_rendimiento.tif"
     }
   },
   "comparacion_montaje": {
     "umbral_probabilidad": 0.7,
-    "celdas_aptas": 582331,
+    "celdas_aptas": 509858,
+    "tamano_bloque_km": 30,
+    "n_bloques_espaciales": 99,
     "rendimiento_fijo_aptas": {
-      "n": 582331,
-      "min": 272.0,
-      "media": 1405.1,
-      "p50": 1529.3,
-      "p90": 1949.6,
+      "n": 509858,
+      "min": 250.8,
+      "media": 1404.6,
+      "p50": 1529.2,
+      "p90": 1949.3,
       "max": 1967.1
     },
     "rendimiento_seguidor_aptas": {
-      "n": 582331,
-      "min": 517.3,
-      "media": 2141.4,
+      "n": 509858,
+      "min": 516.5,
+      "media": 2140.4,
       "p50": 2184.6,
-      "p90": 2557.1,
+      "p90": 2556.2,
       "max": 2595.7
     },
-    "ganancia_seguidor_media_pct": 52.41,
-    "ganancia_seguidor_mediana_celda_pct": 57.65,
+    "ganancia_seguidor_media_pct": 52.39,
+    "ganancia_seguidor_mediana_celda_pct": 57.63,
+    "ganancia_seguidor_mediana_bloque_pct": 59.4,
     "referencia_autor_pct": 36.0,
-    "interpretacion": "El seguidor de un eje rinde +52.4% sobre el montaje fijo en las zonas aptas. El perfil 'agresivo' (prioriza radiación/rendimiento) se beneficia más de esta ganancia; el 'conservador' (prioriza cercanía a infraestructura) la pondera contra el mayor CAPEX y mantenimiento del seguidor.",
+    "interpretacion": "El seguidor de un eje rinde +52.4% sobre el montaje fijo en las zonas aptas. El perfil 'agresivo' (prioriza radiación/rendimiento) se beneficia más de esta ganancia; el 'conservador' (prioriza cercanía a infraestructura) la pondera contra el mayor CAPEX y mantenimiento del seguidor. Nota metodológica: 509,858 celdas aptas caen en solo 99 bloques espaciales independientes (pixeles vecinos comparten terreno/sombreado); 99 es el tamaño de muestra efectivo honesto para cualquier lectura de dispersión — no las celdas.",
     "entradas": {
-      "fijo": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_fijo_specific_yield.tif",
-      "seguidor": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_seguidor_specific_yield.tif"
+      "fijo": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_fijo_specific_yield.tif",
+      "seguidor": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_seguidor_specific_yield.tif"
     }
   },
   "shap": {
@@ -59,104 +69,116 @@
     "importancias_shap": [
       {
         "feature": "dist_subestaciones",
-        "importancia_pct": 45.05,
-        "shap_medio": -0.10968
+        "importancia_pct": 43.82,
+        "shap_medio": -0.1055
       },
       {
         "feature": "dist_transmision",
-        "importancia_pct": 30.5,
-        "shap_medio": -0.05539
+        "importancia_pct": 31.53,
+        "shap_medio": -0.05727
       },
       {
         "feature": "slope",
-        "importancia_pct": 12.1,
-        "shap_medio": -0.01623
+        "importancia_pct": 11.41,
+        "shap_medio": -0.01658
       },
       {
         "feature": "dist_almacen",
-        "importancia_pct": 4.42,
-        "shap_medio": -0.01223
+        "importancia_pct": 4.55,
+        "shap_medio": -0.01322
       },
       {
         "feature": "elev",
-        "importancia_pct": 3.93,
-        "shap_medio": -0.00818
+        "importancia_pct": 3.75,
+        "shap_medio": -0.00914
       },
       {
         "feature": "ghi",
-        "importancia_pct": 2.63,
-        "shap_medio": -0.00644
+        "importancia_pct": 3.37,
+        "shap_medio": -0.00766
       },
       {
         "feature": "northness",
-        "importancia_pct": 1.37,
-        "shap_medio": -0.00388
+        "importancia_pct": 1.58,
+        "shap_medio": -0.00411
       }
     ],
     "figuras": {
-      "bar": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_bar.png",
-      "beeswarm": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_beeswarm.png"
+      "bar": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_bar.png",
+      "beeswarm": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_beeswarm.png"
     },
     "cruce_rendimiento": {
       "n_puntos": 420,
-      "spearman_aptitud_vs_rendimiento": 0.0573,
-      "pvalue": 0.2414,
+      "muestra": "completa (positivas + negativos de entrenamiento)",
+      "spearman_aptitud_vs_rendimiento": 0.0503,
+      "pvalue": 0.3035,
       "spearman_ghi_vs_rendimiento": -0.0084,
-      "interpretacion": "Correlación baja aptitud–rendimiento confirma el desacople de T2: el modelo no persigue la producción física. "
+      "prob_min_apto": 0.7,
+      "cruce_solo_sitios_aptos": {
+        "n_puntos": 107,
+        "spearman_aptitud_vs_rendimiento": -0.0965,
+        "pvalue": 0.3227
+      },
+      "interpretacion": "Correlación baja aptitud–rendimiento confirma el desacople de T2: el modelo no persigue la producción física. (basado en n=107, solo sitios con probabilidad >= 0.7)"
     }
   },
   "consenso": {
     "percentil_apto": 90,
     "umbrales_por_perfil": {
-      "conservador": 0.8882,
-      "balanceado": 0.2197,
-      "agresivo": 0.8562
+      "conservador": 0.8914,
+      "balanceado": 0.2068,
+      "agresivo": 0.8613
     },
-    "celdas_validas": 20175751,
+    "celdas_validas": 20182849,
     "apto_por_perfil": {
-      "conservador": 2017578,
-      "balanceado": 2017578,
-      "agresivo": 2017580
+      "conservador": 2018290,
+      "balanceado": 2018285,
+      "agresivo": 2018286
     },
     "consenso_3_perfiles": {
-      "celdas": 487509,
-      "pct": 2.42
+      "celdas": 468499,
+      "pct": 2.32
     },
     "divergencia_2_perfiles": {
-      "celdas": 1228418,
-      "pct": 6.09
+      "celdas": 1247004,
+      "pct": 6.18
     },
     "divergencia_1_perfil": {
-      "celdas": 2133373,
-      "pct": 10.57
+      "celdas": 2155356,
+      "pct": 10.68
     },
     "no_apto": {
-      "celdas": 16326451,
-      "pct": 80.92
+      "celdas": 16311990,
+      "pct": 80.82
     },
-    "interpretacion": "El 2.42% de la zona válida es apta en los 3 perfiles (consenso: robusto ante la preferencia del stakeholder); 16.66% es apta solo en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado).",
-    "salida_raster": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/consenso_perfiles.tif"
+    "correlacion_rango_entre_perfiles": {
+      "conservador_vs_balanceado": 0.487,
+      "conservador_vs_agresivo": 0.783,
+      "balanceado_vs_agresivo": 0.2032
+    },
+    "interpretacion": "El 2.32% de la zona válida es apta en los 3 perfiles (consenso: robusto ante la preferencia del stakeholder); 16.86% es apta solo en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado). Nota metodológica: el umbral relativo por percentil fija la MISMA proporción de área apta (10%) en los 3 perfiles por construcción — este 'consenso' mide superposición entre conjuntos top-K de igual tamaño, no una medida absoluta de calidad territorial. La correlación de Spearman entre perfiles (más abajo) complementa esta lectura con la magnitud del acuerdo, no solo el solapamiento binario.",
+    "salida_raster": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/consenso_perfiles.tif"
   },
   "shap_espacial": {
     "resolucion_m": 500,
     "n_pixeles": 810489,
     "contribucion_media_shap": {
-      "slope": -0.043,
-      "ghi": -0.00767,
-      "elev": -0.0216,
-      "northness": -0.00343,
-      "dist_transmision": -0.10817,
-      "dist_almacen": -0.01959,
-      "dist_subestaciones": -0.21869
+      "slope": -0.04249,
+      "ghi": -0.00985,
+      "elev": -0.02317,
+      "northness": -0.00418,
+      "dist_transmision": -0.11888,
+      "dist_almacen": -0.02034,
+      "dist_subestaciones": -0.20816
     },
     "pixeles_por_variable_dominante": {
-      "slope": 14937,
-      "ghi": 43,
-      "elev": 537,
-      "northness": 13,
-      "dist_transmision": 93935,
-      "dist_almacen": 1,
-      "dist_subestaciones": 701023
+      "slope": 9867,
+      "ghi": 5,
+      "elev": 639,
+      "northness": 7,
+      "dist_transmision": 101333,
+      "dist_almacen": 2,
+      "dist_subestaciones": 698636
     },
     "leyenda_dominante": {
       "0": "slope",
@@ -168,21 +190,21 @@
       "6": "dist_subestaciones"
     },
     "rasters": {
-      "slope": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_slope.tif",
-      "ghi": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_ghi.tif",
-      "elev": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_elev.tif",
-      "northness": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_northness.tif",
-      "dist_transmision": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_transmision.tif",
-      "dist_almacen": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_almacen.tif",
-      "dist_subestaciones": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_subestaciones.tif",
-      "dominante": "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dominante.tif"
+      "slope": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_slope.tif",
+      "ghi": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_ghi.tif",
+      "elev": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_elev.tif",
+      "northness": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_northness.tif",
+      "dist_transmision": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_transmision.tif",
+      "dist_almacen": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_almacen.tif",
+      "dist_subestaciones": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_subestaciones.tif",
+      "dominante": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dominante.tif"
     },
     "waterfalls": [
-      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top1.png",
-      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top2.png",
-      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top3.png",
-      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top4.png",
-      "/home/isaacespinoza91/work/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top5.png"
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top1.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top2.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top3.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top4.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top5.png"
     ]
   }
 }

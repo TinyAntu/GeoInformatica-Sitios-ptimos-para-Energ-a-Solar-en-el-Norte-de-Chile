@@ -32,6 +32,7 @@ import numpy as np
 import yaml
 import rasterio
 from rasterio.enums import Resampling
+from rasterio.features import geometry_mask
 import geopandas as gpd
 import matplotlib
 matplotlib.use('Agg')  # Backend no interactivo: solo guardamos figuras
@@ -60,14 +61,32 @@ def leer_raster_reducido(path):
         datos = src.read(1, out_shape=(out_h, out_w), resampling=Resampling.nearest)
         nodata = src.nodata if src.nodata is not None else -9999.0
         extent = (src.bounds.left, src.bounds.right, src.bounds.bottom, src.bounds.top)
+        transform = src.transform * src.transform.scale(src.width / out_w, src.height / out_h)
     enmascarado = np.ma.masked_invalid(np.ma.masked_equal(datos, nodata))
-    return enmascarado, extent
+    return enmascarado, extent, transform
 
 
-def calcular_percentil_combinado(paths, p_low=2, p_high=98):
+def enmascarar_fuera_de_regiones(datos, transform, regiones):
+    """Enmascara (nodata) los píxeles cuyo centro cae fuera del polígono de `regiones`.
+
+    El bounding box de las regiones ya se usa para el encuadre del mapa, pero al ser
+    rectangular deja pasar celdas del ráster (océano, bordes de regiones vecinas) que
+    quedan dentro del rectángulo aunque no pertenezcan al área de interés real.
+    """
+    fuera = geometry_mask(regiones.geometry, out_shape=datos.shape, transform=transform,
+                          invert=False)
+    return np.ma.masked_array(datos, mask=(np.ma.getmaskarray(datos) | fuera))
+
+
+def calcular_percentil_combinado(paths, p_low=2, p_high=98, regiones=None):
     """Percentiles combinados de varios rasters, para compartir una misma escala de color
     entre mapas comparables (p. ej. rendimiento fijo vs. seguidor)."""
-    partes = [leer_raster_reducido(p)[0].compressed() for p in paths]
+    partes = []
+    for p in paths:
+        datos, _, transform = leer_raster_reducido(p)
+        if regiones is not None:
+            datos = enmascarar_fuera_de_regiones(datos, transform, regiones)
+        partes.append(datos.compressed())
     todos = np.concatenate(partes)
     return float(np.percentile(todos, p_low)), float(np.percentile(todos, p_high))
 
@@ -110,16 +129,20 @@ def dibujar_leyenda_discreta(ax, colores, etiquetas, titulo_leyenda):
 def renderizar_mapa(tif_path, titulo, etiqueta_leyenda, out_png, regiones,
                     cmap='viridis', vmin=0.0, vmax=1.0,
                     discreto=False, categorias=None, colores_discretos=None,
-                    ocultar_bajo=None, nota_extra=None):
+                    ocultar_bajo=None, nota_extra=None, recortar_a_regiones=False):
     """Renderiza un GeoTIFF con los 7 elementos cartográficos obligatorios.
 
     `discreto=True` dibuja una leyenda de parches (categorías/orden) en vez de colorbar
     continuo; usar con `colores_discretos` (uno por categoría, vmin..vmax enteros inclusive)
     y `categorias` (etiquetas en el mismo orden). `ocultar_bajo` enmascara valores válidos
-    por debajo del umbral (p. ej. el 0 = "no apto" del mapa de consenso).
+    por debajo del umbral (p. ej. el 0 = "no apto" del mapa de consenso). `recortar_a_regiones`
+    enmascara además todo píxel fuera del polígono real de `regiones` (el encuadre por
+    bounding box deja pasar océano/regiones vecinas dentro del rectángulo).
     """
     print(f"Renderizando {os.path.basename(tif_path)} ...")
-    datos, extent = leer_raster_reducido(tif_path)
+    datos, extent, transform = leer_raster_reducido(tif_path)
+    if recortar_a_regiones:
+        datos = enmascarar_fuera_de_regiones(datos, transform, regiones)
     if ocultar_bajo is not None:
         datos = np.ma.masked_less(datos, ocultar_bajo)
 
@@ -463,18 +486,20 @@ def main():
     tif_seguidor = os.path.join(directorio_raiz, prefijo + '_seguidor_specific_yield.tif')
     existentes = [p for p in (tif_fijo, tif_seguidor) if os.path.exists(p)]
     if existentes:
-        vmin_r, vmax_r = calcular_percentil_combinado(existentes)
+        vmin_r, vmax_r = calcular_percentil_combinado(existentes, regiones=regiones)
         nota_motor = "Motor: solarpv-rs (validado vs. pvlib ≤0.2 %), grilla 300 m."
         if os.path.exists(tif_fijo):
             renderizar_mapa(tif_fijo, 'Rendimiento fotovoltaico — montaje fijo (tilt 23°)',
                             'Rendimiento (kWh/kWp/año)',
                             os.path.join(figures_dir, 'mapa_rendimiento_fijo.png'), regiones,
-                            cmap='plasma', vmin=vmin_r, vmax=vmax_r, nota_extra=nota_motor)
+                            cmap='plasma', vmin=vmin_r, vmax=vmax_r, nota_extra=nota_motor,
+                            recortar_a_regiones=True)
         if os.path.exists(tif_seguidor):
             renderizar_mapa(tif_seguidor, 'Rendimiento fotovoltaico — seguidor de un eje',
                             'Rendimiento (kWh/kWp/año)',
                             os.path.join(figures_dir, 'mapa_rendimiento_seguidor.png'), regiones,
-                            cmap='plasma', vmin=vmin_r, vmax=vmax_r, nota_extra=nota_motor)
+                            cmap='plasma', vmin=vmin_r, vmax=vmax_r, nota_extra=nota_motor,
+                            recortar_a_regiones=True)
     else:
         print("  [AVISO] No hay mapas de rendimiento; corre scripts/run_solar_yield.py primero.")
 

@@ -1,14 +1,14 @@
 {
-  "total_evaluados": 5776,
-  "total_validos": 5144,
-  "total_rechazados": 632,
-  "tasa_aprobacion_pct": 89.06,
+  "total_evaluados": 3092,
+  "total_validos": 2612,
+  "total_rechazados": 480,
+  "tasa_aprobacion_pct": 84.48,
   "target_srid": 32719,
   "conteo_motivos_rechazo": {
-    "FUERA_DE_REGION_DE_ESTUDIO": 63,
-    "APTITUD_BAJO_UMBRAL": 74,
-    "PENDIENTE_EXCEDE_MAXIMA": 464,
-    "ELEVACION_EXCEDE_MAXIMA": 45
+    "APTITUD_BAJO_UMBRAL": 153,
+    "ELEVACION_EXCEDE_MAXIMA": 22,
+    "FUERA_DE_REGION_DE_ESTUDIO": 52,
+    "PENDIENTE_EXCEDE_MAXIMA": 277
   },
-  "fecha_ejecucion": "2026-08-12T16:37:01.085214"
+  "fecha_ejecucion": "2026-08-25T13:06:42.786357"
 }
