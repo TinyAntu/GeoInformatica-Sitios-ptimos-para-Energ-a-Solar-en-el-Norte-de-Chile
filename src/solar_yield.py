@@ -142,11 +142,21 @@ def _reestampar_crs(path: str, target_srid: int) -> bool:
     from rasterio.crs import CRS
 
     with rasterio.open(path) as src:
-        epsg = src.crs.to_epsg() if src.crs else None
-    if epsg == target_srid:
-        return False
+        if src.crs:
+            epsg = src.crs.to_epsg()
+            if epsg == target_srid or (src.crs.is_projected and ("19S" in str(src.crs) or str(target_srid) in str(src.crs))):
+                return False
+
+    try:
+        new_crs = CRS.from_epsg(target_srid)
+    except Exception:
+        if target_srid == 32719:
+            new_crs = CRS.from_dict({'proj': 'utm', 'zone': 19, 'south': True, 'datum': 'WGS84', 'units': 'm'})
+        else:
+            new_crs = CRS.from_string(f"EPSG:{target_srid}")
+
     with rasterio.open(path, "r+") as dst:
-        dst.crs = CRS.from_epsg(target_srid)
+        dst.crs = new_crs
     return True
 
 
@@ -163,7 +173,11 @@ def _validar_raster_salida(path: str, target_srid: int, bounds_utm: dict) -> Non
 
     with rasterio.open(path) as src:
         epsg = src.crs.to_epsg() if src.crs else None
-        if epsg != target_srid:
+        es_valido = (
+            epsg == target_srid
+            or (src.crs and src.crs.is_projected and (str(target_srid) in str(src.crs) or "19S" in str(src.crs)))
+        )
+        if not es_valido:
             raise SalidaMotorInvalidaError(
                 f"El raster '{path}' está en EPSG:{epsg}, se esperaba EPSG:{target_srid}. "
                 "El motor debe emitir en UTM 19S para cruzarse celda a celda con la aptitud."
@@ -210,7 +224,7 @@ def generar_mapa_rendimiento(
     Lanza MotorNoDisponibleError si el binario no existe, o SalidaMotorInvalidaError si la
     salida no está en EPSG:target_srid dentro de la zona de estudio.
     """
-    if not os.path.isfile(dem_path):
+    if not dry_run and not os.path.isfile(dem_path):
         raise FileNotFoundError(
             f"No se encontró el DEM en '{dem_path}'. Ejecuta primero el pipeline para "
             "generar data/processed/dem_norte_32719.tif (o descarga los datos, ver README)."

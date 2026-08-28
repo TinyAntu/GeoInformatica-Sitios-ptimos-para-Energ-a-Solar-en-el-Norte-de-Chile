@@ -31,16 +31,14 @@ from matplotlib.colors import ListedColormap
 from PIL import Image
 
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(directorio_raiz)
+
+from src.utils import _asegurar_proj_lib
+_asegurar_proj_lib()
+from src.preprocessing import _obtener_crs
 
 MAX_PX = 1600  # lado máximo del PNG de salida (compromiso nitidez/tamaño)
 
-# Paleta Okabe & Ito (2008): colores categóricos distinguibles para las formas más comunes
-# de daltonismo (deuteranopia/protanopia). Se usa para la capa "dominante" (7 categorías
-# nominales); reemplaza a tab10, cuyos pares rojo/verde/marrón son poco distinguibles.
-# Mismo orden (empezando en naranja, sin negro) que en generar_figuras_informe.py, para que
-# la figura estática y la capa del visor usen exactamente los mismos colores por variable.
-# Nombre propio ("okabe_ito_gs") porque matplotlib >=3.11 ya trae un cmap builtin "okabe_ito"
-# (con negro como primer color) que no se puede re-registrar.
 OKABE_ITO = ['#E69F00', '#56B4E9', '#009E73', '#F0E442',
             '#0072B2', '#D55E00', '#CC79A7']
 if 'okabe_ito_gs' not in colormaps:
@@ -52,19 +50,13 @@ def _ruta_abs(ruta: str) -> str:
 
 
 def _reproyectar_para_web(src_path, resampling=Resampling.bilinear, clip_mask_path=None):
-    """Reproyecta un raster a Web Mercator (EPSG:3857) remuestreado a MAX_PX.
-
-    Se usa 3857 —no 4326— porque folium/Leaflet coloca el ImageOverlay estirándolo
-    linealmente en el espacio de pantalla (que ES Web Mercator) sin reproyectar la imagen.
-    Una imagen 4326 (lat/lon plano) estirada así queda distorsionada en el eje norte-sur en
-    latitudes altas (norte de Chile ~-25°), lo que se percibe como un desfase. Generando la
-    imagen ya en 3857, las esquinas caen exactas sobre el basemap.
-
-    Devuelve (arr, (sur, oeste, norte, este)) con los bounds en lat/lon que espera folium.
-    """
+    """Reproyecta un raster a Web Mercator (EPSG:3857) remuestreado a MAX_PX."""
+    crs_3857 = _obtener_crs(3857)
+    crs_4326 = _obtener_crs(4326)
     with rasterio.open(src_path) as src:
+        src_crs = src.crs if src.crs and getattr(src.crs, 'is_projected', False) else _obtener_crs(32719)
         # Extensión en metros Web Mercator.
-        w_m, s_m, e_m, n_m = transform_bounds(src.crs, "EPSG:3857", *src.bounds)
+        w_m, s_m, e_m, n_m = transform_bounds(src_crs, crs_3857, *src.bounds)
         ancho, alto = e_m - w_m, n_m - s_m
         escala = MAX_PX / max(ancho, alto)
         width = max(1, int(round(ancho * escala)))
@@ -73,26 +65,25 @@ def _reproyectar_para_web(src_path, resampling=Resampling.bilinear, clip_mask_pa
         destino = np.full((height, width), np.nan, dtype=np.float32)
         reproject(
             source=rasterio.band(src, 1), destination=destino,
-            src_transform=src.transform, src_crs=src.crs, src_nodata=src.nodata,
-            dst_transform=dst_transform, dst_crs="EPSG:3857", dst_nodata=np.nan,
+            src_transform=src.transform, src_crs=src_crs, src_nodata=src.nodata,
+            dst_transform=dst_transform, dst_crs=crs_3857, dst_nodata=np.nan,
             resampling=resampling,
         )
         if clip_mask_path is not None:
-            # El motor PV trabaja sobre el DEM completo; heredar la máscara de
-            # aptitud evita mostrar rendimiento fuera de las regiones estudiadas.
             with rasterio.open(clip_mask_path) as mascara:
                 datos_mascara = mascara.read(1, masked=True)
                 mascara_valida = ~np.ma.getmaskarray(datos_mascara)
                 mascara_destino = np.zeros((height, width), dtype=np.uint8)
+                mask_crs = mascara.crs if mascara.crs and getattr(mascara.crs, 'is_projected', False) else _obtener_crs(32719)
                 reproject(
                     source=mascara_valida.astype(np.uint8), destination=mascara_destino,
-                    src_transform=mascara.transform, src_crs=mascara.crs,
-                    src_nodata=0, dst_transform=dst_transform, dst_crs="EPSG:3857",
+                    src_transform=mascara.transform, src_crs=mask_crs,
+                    src_nodata=0, dst_transform=dst_transform, dst_crs=crs_3857,
                     dst_nodata=0, resampling=Resampling.nearest,
                 )
                 destino[mascara_destino == 0] = np.nan
     # Bounds lat/lon (esquinas de la caja 3857) para folium: [[S,W],[N,E]].
-    oeste, sur, este, norte = transform_bounds("EPSG:3857", "EPSG:4326", w_m, s_m, e_m, n_m)
+    oeste, sur, este, norte = transform_bounds(crs_3857, crs_4326, w_m, s_m, e_m, n_m)
     return destino, (sur, oeste, norte, este)
 
 

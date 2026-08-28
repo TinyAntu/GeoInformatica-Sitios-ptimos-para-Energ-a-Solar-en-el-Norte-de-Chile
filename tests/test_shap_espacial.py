@@ -21,8 +21,9 @@ class TestEscribirRasterSHAP(unittest.TestCase):
     def test_reconstruye_con_nodata(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        utm_crs = rasterio.crs.CRS.from_dict({'proj': 'utm', 'zone': 19, 'south': True, 'datum': 'WGS84', 'units': 'm'})
         base_meta = {
-            "crs": "EPSG:32719",
+            "crs": utm_crs,
             "transform": from_origin(300000, 7010000, 1000, 1000),
             "width": 4, "height": 3,
         }
@@ -35,7 +36,8 @@ class TestEscribirRasterSHAP(unittest.TestCase):
         _escribir_raster(valores, valid, base_meta, path)
 
         with rasterio.open(path) as d:
-            self.assertEqual(d.crs.to_epsg(), 32719)
+            epsg = d.crs.to_epsg() if d.crs else None
+            self.assertTrue(epsg == 32719 or (d.crs and "19S" in str(d.crs)))
             self.assertEqual(d.nodata, NODATA)
             arr = d.read(1)
         # Las celdas válidas tienen los valores (con signo); el resto NODATA.

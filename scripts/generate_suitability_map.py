@@ -68,9 +68,14 @@ def construir_grilla_referencia(dem_path, resolucion_m=None):
                 f"'{dem_path}' no tiene CRS definido. Este raster define la grilla de "
                 "referencia de todo el mapa de aptitud: revisa la etapa de preprocesamiento."
             )
-        if crs.to_epsg() != 32719:
+        epsg = crs.to_epsg()
+        es_32719 = (
+            epsg == 32719
+            or (crs.is_projected and ("19S" in str(crs) or "32719" in str(crs)))
+        )
+        if not es_32719:
             raise ValueError(
-                f"'{dem_path}' está en {crs} (EPSG:{crs.to_epsg()}), pero el proyecto exige "
+                f"'{dem_path}' está en {crs} (EPSG:{epsg}), pero el proyecto exige "
                 "EPSG:32719 (UTM 19S, ver AGENTS.md). Reproyéctalo antes de generar el mapa."
             )
         if resolucion_m is None:

@@ -23,6 +23,9 @@ import yaml
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
+from src.utils import _asegurar_proj_lib
+_asegurar_proj_lib()
+
 from src.utils import _correr_etapa
 from src.preprocessing import procesar_dem
 

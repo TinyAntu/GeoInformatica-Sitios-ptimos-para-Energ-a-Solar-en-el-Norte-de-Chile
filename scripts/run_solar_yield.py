@@ -37,6 +37,8 @@ def main():
     parser.add_argument('--config', default='config.yaml', help='Ruta al archivo de configuración')
     parser.add_argument('--mount', choices=['tilt', 'tracker'], default='tilt',
                         help="Montaje: 'tilt' (fijo) o 'tracker' (seguidor de un eje)")
+    parser.add_argument('--tilt', type=float, default=None,
+                        help="Inclinación en grados para montaje fijo (p. ej. 0 para horizontal, 23 por defecto)")
     parser.add_argument('--dry-run', action='store_true',
                         help='Imprime el comando sin ejecutar el motor (útil si aún no está compilado)')
     parser.add_argument('--zona', default=None,
@@ -61,6 +63,7 @@ def main():
     bounds_utm = pv.get('bounds_utm')
 
     montaje = cfg.get('montaje', {})
+    tilt_efectivo = args.tilt if args.tilt is not None else montaje.get('tilt')
 
     # Con --zona se sustituyen el DEM y el destino, pero NO el montaje (tilt/azimut/gcr): la
     # comparación entre zonas debe mantener la misma configuración física, o la diferencia de
@@ -80,8 +83,16 @@ def main():
             if bloque.get(clave) is not None:
                 cfg[clave] = bloque[clave]
 
-    # El sufijo distingue las salidas de montaje fijo vs seguidor (evita pisarse).
-    out_prefix = _ruta_abs(cfg['out_prefix']) + ('_fijo' if args.mount == 'tilt' else '_seguidor')
+    # El sufijo distingue las salidas de montaje fijo vs seguidor vs tilt=0 (evita pisarse).
+    if args.mount == 'tilt':
+        if tilt_efectivo == 0 or tilt_efectivo == 0.0:
+            sufijo = '_fijo_tilt0'
+        else:
+            sufijo = '_fijo'
+    else:
+        sufijo = '_seguidor'
+
+    out_prefix = _ruta_abs(cfg['out_prefix']) + sufijo
 
     # El motor puede tardar minutos u horas (ver README): se salta si el rendimiento ya
     # existe y está más nuevo que el DEM y la config, igual que hace run_comparacion_montaje.py
@@ -101,7 +112,7 @@ def main():
             date=cfg['date'],
             binario=_ruta_abs(cfg['binario']),
             mount=args.mount,
-            tilt=montaje.get('tilt'),
+            tilt=tilt_efectivo,
             surface_azimuth=montaje.get('surface_azimuth'),
             gcr=montaje.get('gcr'),
             target_srid=target_srid,
