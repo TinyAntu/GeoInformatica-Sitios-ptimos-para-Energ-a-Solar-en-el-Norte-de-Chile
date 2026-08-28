@@ -4,7 +4,7 @@
 ![Rust Motor](https://img.shields.io/badge/Rust-solarpv--rs-orange.svg)
 ![CRS](https://img.shields.io/badge/CRS-EPSG%3A32719-green.svg)
 ![Pipeline](https://img.shields.io/badge/Pipeline-Idempotente-brightgreen.svg)
-![Licencia](https://img.shields.io/badge/Licencia-MIT-lightgrey.svg)
+
 
 **Problema:** Identificar sitios óptimos para nuevas plantas fotovoltaicas en las regiones de Antofagasta y Atacama (Norte de Chile) mediante análisis multicriterio GIS y aprendizaje automático (Random Forest + AHP), integrando físicas reales de producción fotovoltaica y explicabilidad espacial.
 
@@ -70,7 +70,6 @@ git clone https://github.com/franciscoparrao/solarpv-rs.git
 git clone https://github.com/franciscoparrao/surtgis.git
 cd solarpv-rs
 cargo build --release -p solarpv-cli
-cd ..
 ```
 
 ### Opciones de Montaje y Tilt
@@ -98,3 +97,4 @@ streamlit run app/visor.py                                    # Inicia visor loc
 1. Los assets en `app/assets/` están versionados en el repositorio (no se requieren los `.tif` pesados en la nube).
 2. Configurar en [share.streamlit.io](https://share.streamlit.io) apuntando a `app/visor.py`.
 3. El despliegue usa `app/requirements.txt` para mantener una construcción ligera de paquetes.
+
