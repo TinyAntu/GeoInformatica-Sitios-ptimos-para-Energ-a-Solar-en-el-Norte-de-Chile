@@ -1,0 +1,171 @@
+{
+  "balanceado": {
+    "png": "assets/balanceado.png",
+    "colorbar": "assets/balanceado_colorbar.png",
+    "bounds": [
+      [
+        -30.034118225841024,
+        -72.25395932279919
+      ],
+      [
+        -19.97447335862472,
+        -65.74585726146483
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Aptitud ML — probabilidad (0–1)",
+    "cmap": "viridis",
+    "categorias": null,
+    "tamano_px": [
+      936,
+      1600
+    ]
+  },
+  "conservador": {
+    "png": "assets/conservador.png",
+    "colorbar": "assets/conservador_colorbar.png",
+    "bounds": [
+      [
+        -30.033215767988263,
+        -72.25392990434148
+      ],
+      [
+        -19.974457201003226,
+        -65.7448516018343
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Aptitud conservador (0–1)",
+    "cmap": "viridis",
+    "categorias": null,
+    "tamano_px": [
+      937,
+      1600
+    ]
+  },
+  "agresivo": {
+    "png": "assets/agresivo.png",
+    "colorbar": "assets/agresivo_colorbar.png",
+    "bounds": [
+      [
+        -30.033215767988263,
+        -72.25392990434148
+      ],
+      [
+        -19.974457201003226,
+        -65.7448516018343
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Aptitud agresivo (0–1)",
+    "cmap": "viridis",
+    "categorias": null,
+    "tamano_px": [
+      937,
+      1600
+    ]
+  },
+  "rendimiento": {
+    "png": "assets/rendimiento.png",
+    "colorbar": "assets/rendimiento_colorbar.png",
+    "bounds": [
+      [
+        -30.03502068218564,
+        -72.2539887425898
+      ],
+      [
+        -19.97447335862472,
+        -65.74582784002305
+      ]
+    ],
+    "vmin": 1251.77,
+    "vmax": 1470.49,
+    "unidad": "Rendimiento (kWh/kWp/año)",
+    "cmap": "inferno",
+    "categorias": null,
+    "tamano_px": [
+      936,
+      1600
+    ]
+  },
+  "cruce": {
+    "png": "assets/cruce.png",
+    "colorbar": "assets/cruce_colorbar.png",
+    "bounds": [
+      [
+        -30.034118225841024,
+        -72.25395932279919
+      ],
+      [
+        -19.97447335862472,
+        -65.74585726146483
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 1.0,
+    "unidad": "Ranking aptitud × rendimiento (0–1)",
+    "cmap": "magma",
+    "categorias": null,
+    "tamano_px": [
+      936,
+      1600
+    ]
+  },
+  "consenso": {
+    "png": "assets/consenso.png",
+    "colorbar": "assets/consenso_colorbar.png",
+    "bounds": [
+      [
+        -30.034118225841024,
+        -72.25395932279919
+      ],
+      [
+        -19.97447335862472,
+        -65.74585726146483
+      ]
+    ],
+    "vmin": 1.0,
+    "vmax": 3.0,
+    "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)",
+    "cmap": "cividis",
+    "categorias": null,
+    "tamano_px": [
+      936,
+      1600
+    ]
+  },
+  "dominante": {
+    "png": "assets/dominante.png",
+    "colorbar": "assets/dominante_colorbar.png",
+    "bounds": [
+      [
+        -30.033215767988263,
+        -72.25392990434148
+      ],
+      [
+        -19.974457201003226,
+        -65.7448516018343
+      ]
+    ],
+    "vmin": 0.0,
+    "vmax": 6.0,
+    "unidad": "Variable dominante (SHAP)",
+    "cmap": "okabe_ito_gs",
+    "categorias": [
+      "Pendiente",
+      "GHI",
+      "Elevación",
+      "Northness",
+      "Dist. transmisión",
+      "Dist. almacenam.",
+      "Dist. subestaciones"
+    ],
+    "tamano_px": [
+      937,
+      1600
+    ]
+  }
+}

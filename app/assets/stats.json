@@ -1,0 +1,1369 @@
+{
+  "cruce": {
+    "umbral_probabilidad": 0.7,
+    "celdas_validas": 20184890,
+    "celdas_aptas": 509858,
+    "pct_aptas": 2.53,
+    "rendimiento_region": {
+      "n": 20184890,
+      "min": 247.7,
+      "media": 1393.2,
+      "p50": 1527.5,
+      "p90": 1916.4,
+      "max": 1967.1
+    },
+    "rendimiento_aptas": {
+      "n": 509858,
+      "min": 250.8,
+      "media": 1404.6,
+      "p50": 1529.2,
+      "p90": 1949.3,
+      "max": 1967.1
+    },
+    "ganancia_aptas_pct": 0.81,
+    "sensibilidad_formula_combinacion": {
+      "formula_usada": "producto: probabilidad_RF * yield_norm",
+      "alternativa": "media aritmética ponderada 50/50",
+      "spearman_ranking_vs_alternativa": 0.5573,
+      "overlap_top_1pct_pct": 97.3,
+      "nota": "Si el spearman y el overlap son altos, el ranking (y los top-N sitios que se reporten) son robustos a esta elección de fórmula; si son bajos, la elección de 'producto' pesa más de lo que parece y debería justificarse con más alternativas antes de presentarse como definitiva."
+    },
+    "salidas": {
+      "rendimiento_en_aptas": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_en_aptas.tif",
+      "aptitud_x_rendimiento": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/aptitud_x_rendimiento.tif"
+    }
+  },
+  "comparacion_montaje": {
+    "umbral_probabilidad": 0.7,
+    "celdas_aptas": 509858,
+    "tamano_bloque_km": 30,
+    "n_bloques_espaciales": 99,
+    "rendimiento_fijo_aptas": {
+      "n": 509858,
+      "min": 250.8,
+      "media": 1404.6,
+      "p50": 1529.2,
+      "p90": 1949.3,
+      "max": 1967.1
+    },
+    "rendimiento_seguidor_aptas": {
+      "n": 509858,
+      "min": 516.5,
+      "media": 2140.4,
+      "p50": 2184.6,
+      "p90": 2556.2,
+      "max": 2595.7
+    },
+    "ganancia_seguidor_media_pct": 52.39,
+    "ganancia_seguidor_mediana_celda_pct": 57.63,
+    "ganancia_seguidor_mediana_bloque_pct": 59.4,
+    "referencia_autor_pct": 36.0,
+    "interpretacion": "El seguidor de un eje rinde +52.4% sobre el montaje fijo en las zonas aptas. El perfil 'agresivo' (prioriza radiación/rendimiento) se beneficia más de esta ganancia; el 'conservador' (prioriza cercanía a infraestructura) la pondera contra el mayor CAPEX y mantenimiento del seguidor. Nota metodológica: 509,858 celdas aptas caen en solo 99 bloques espaciales independientes (pixeles vecinos comparten terreno/sombreado); 99 es el tamaño de muestra efectivo honesto para cualquier lectura de dispersión — no las celdas.",
+    "entradas": {
+      "fijo": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_fijo_specific_yield.tif",
+      "seguidor": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/rendimiento_seguidor_specific_yield.tif"
+    }
+  },
+  "shap": {
+    "n_muestras": 420,
+    "importancias_shap": [
+      {
+        "feature": "dist_subestaciones",
+        "importancia_pct": 43.82,
+        "shap_medio": -0.1055
+      },
+      {
+        "feature": "dist_transmision",
+        "importancia_pct": 31.53,
+        "shap_medio": -0.05727
+      },
+      {
+        "feature": "slope",
+        "importancia_pct": 11.41,
+        "shap_medio": -0.01658
+      },
+      {
+        "feature": "dist_almacen",
+        "importancia_pct": 4.55,
+        "shap_medio": -0.01322
+      },
+      {
+        "feature": "elev",
+        "importancia_pct": 3.75,
+        "shap_medio": -0.00914
+      },
+      {
+        "feature": "ghi",
+        "importancia_pct": 3.37,
+        "shap_medio": -0.00766
+      },
+      {
+        "feature": "northness",
+        "importancia_pct": 1.58,
+        "shap_medio": -0.00411
+      }
+    ],
+    "figuras": {
+      "bar": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_bar.png",
+      "beeswarm": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_summary_beeswarm.png"
+    },
+    "cruce_rendimiento": {
+      "n_puntos": 420,
+      "muestra": "completa (positivas + negativos de entrenamiento)",
+      "spearman_aptitud_vs_rendimiento": 0.0503,
+      "pvalue": 0.3035,
+      "spearman_ghi_vs_rendimiento": -0.0084,
+      "prob_min_apto": 0.7,
+      "cruce_solo_sitios_aptos": {
+        "n_puntos": 107,
+        "spearman_aptitud_vs_rendimiento": -0.0965,
+        "pvalue": 0.3227
+      },
+      "interpretacion": "Correlación baja aptitud–rendimiento confirma el desacople de T2: el modelo no persigue la producción física. (basado en n=107, solo sitios con probabilidad >= 0.7)"
+    }
+  },
+  "consenso": {
+    "percentil_apto": 90,
+    "umbrales_por_perfil": {
+      "conservador": 0.8914,
+      "balanceado": 0.2068,
+      "agresivo": 0.8613
+    },
+    "celdas_validas": 20182849,
+    "apto_por_perfil": {
+      "conservador": 2018290,
+      "balanceado": 2018285,
+      "agresivo": 2018286
+    },
+    "consenso_3_perfiles": {
+      "celdas": 468499,
+      "pct": 2.32
+    },
+    "divergencia_2_perfiles": {
+      "celdas": 1247004,
+      "pct": 6.18
+    },
+    "divergencia_1_perfil": {
+      "celdas": 2155356,
+      "pct": 10.68
+    },
+    "no_apto": {
+      "celdas": 16311990,
+      "pct": 80.82
+    },
+    "correlacion_rango_entre_perfiles": {
+      "conservador_vs_balanceado": 0.487,
+      "conservador_vs_agresivo": 0.783,
+      "balanceado_vs_agresivo": 0.2032
+    },
+    "interpretacion": "El 2.32% de la zona válida es apta en los 3 perfiles (consenso: robusto ante la preferencia del stakeholder); 16.86% es apta solo en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado). Nota metodológica: el umbral relativo por percentil fija la MISMA proporción de área apta (10%) en los 3 perfiles por construcción — este 'consenso' mide superposición entre conjuntos top-K de igual tamaño, no una medida absoluta de calidad territorial. La correlación de Spearman entre perfiles (más abajo) complementa esta lectura con la magnitud del acuerdo, no solo el solapamiento binario.",
+    "salida_raster": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/consenso_perfiles.tif"
+  },
+  "shap_espacial": {
+    "resolucion_m": 500,
+    "n_pixeles": 810489,
+    "contribucion_media_shap": {
+      "slope": -0.04249,
+      "ghi": -0.00985,
+      "elev": -0.02317,
+      "northness": -0.00418,
+      "dist_transmision": -0.11888,
+      "dist_almacen": -0.02034,
+      "dist_subestaciones": -0.20816
+    },
+    "pixeles_por_variable_dominante": {
+      "slope": 9867,
+      "ghi": 5,
+      "elev": 639,
+      "northness": 7,
+      "dist_transmision": 101333,
+      "dist_almacen": 2,
+      "dist_subestaciones": 698636
+    },
+    "leyenda_dominante": {
+      "0": "slope",
+      "1": "ghi",
+      "2": "elev",
+      "3": "northness",
+      "4": "dist_transmision",
+      "5": "dist_almacen",
+      "6": "dist_subestaciones"
+    },
+    "rasters": {
+      "slope": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_slope.tif",
+      "ghi": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_ghi.tif",
+      "elev": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_elev.tif",
+      "northness": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_northness.tif",
+      "dist_transmision": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_transmision.tif",
+      "dist_almacen": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_almacen.tif",
+      "dist_subestaciones": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dist_subestaciones.tif",
+      "dominante": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/shap_espacial_dominante.tif"
+    },
+    "waterfalls": [
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top1.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top2.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top3.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top4.png",
+      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/shap_waterfall_top5.png"
+    ]
+  },
+  "metricas_topk": {
+    "ks_evaluados_pct": [
+      0.5,
+      1.0,
+      2.0,
+      3.0,
+      5.0,
+      7.5,
+      10.0
+    ],
+    "interpretacion_k": "K = porcentaje del área de estudio (K1 = top 1%, K3 = top 3%)",
+    "supuesto_huella_ha_por_mw": 2.0,
+    "in_sample_mapa_entregado": {
+      "n_pixeles_validos": 20184890,
+      "n_plantas_evaluadas": 105,
+      "n_pixeles_marcados_por_plantas": 105,
+      "por_k": {
+        "0.5": {
+          "umbral_probabilidad": 0.938109,
+          "pct_area_seleccionada": 0.5,
+          "n_pixeles_top": 100925,
+          "recall": 0.6571,
+          "plantas_capturadas": 69,
+          "precision_zonas": {
+            "n_zonas_candidatas": 1751,
+            "n_zonas_con_planta": 48,
+            "precision": 0.0274,
+            "precision_base_azar": 0.000299,
+            "factor_enriquecimiento": 91.7,
+            "area_zona_mediana_km2": 0.02,
+            "area_zona_maxima_km2": 33.35
+          },
+          "precision_area": {
+            "precision": 0.098122,
+            "precision_base_azar": 0.000707,
+            "precision_techo_modelo_perfecto": 0.141491,
+            "pct_del_techo_alcanzado": 69.3,
+            "factor_enriquecimiento": 138.7,
+            "area_huella_km2": 142.8
+          }
+        },
+        "1": {
+          "umbral_probabilidad": 0.867797,
+          "pct_area_seleccionada": 1.0,
+          "n_pixeles_top": 201849,
+          "recall": 0.8095,
+          "plantas_capturadas": 85,
+          "precision_zonas": {
+            "n_zonas_candidatas": 2227,
+            "n_zonas_con_planta": 47,
+            "precision": 0.0211,
+            "precision_base_azar": 0.000466,
+            "factor_enriquecimiento": 45.3,
+            "area_zona_mediana_km2": 0.02,
+            "area_zona_maxima_km2": 166.39
+          },
+          "precision_area": {
+            "precision": 0.058113,
+            "precision_base_azar": 0.000707,
+            "precision_techo_modelo_perfecto": 0.070746,
+            "pct_del_techo_alcanzado": 82.1,
+            "factor_enriquecimiento": 82.1,
+            "area_huella_km2": 142.8
+          }
+        },
+        "2": {
+          "umbral_probabilidad": 0.755005,
+          "pct_area_seleccionada": 2.0,
+          "n_pixeles_top": 403699,
+          "recall": 0.9429,
+          "plantas_capturadas": 99,
+          "precision_zonas": {
+            "n_zonas_candidatas": 2686,
+            "n_zonas_con_planta": 47,
+            "precision": 0.0175,
+            "precision_base_azar": 0.000758,
+            "factor_enriquecimiento": 23.1,
+            "area_zona_mediana_km2": 0.02,
+            "area_zona_maxima_km2": 483.1
+          },
+          "precision_area": {
+            "precision": 0.032504,
+            "precision_base_azar": 0.000707,
+            "precision_techo_modelo_perfecto": 0.035373,
+            "pct_del_techo_alcanzado": 91.9,
+            "factor_enriquecimiento": 45.9,
+            "area_huella_km2": 142.8
+          }
+        },
+        "3": {
+          "umbral_probabilidad": 0.654194,
+          "pct_area_seleccionada": 3.0,
+          "n_pixeles_top": 605547,
+          "recall": 1.0,
+          "plantas_capturadas": 105,
+          "precision_zonas": {
+            "n_zonas_candidatas": 2814,
+            "n_zonas_con_planta": 36,
+            "precision": 0.0128,
+            "precision_base_azar": 0.001062,
+            "factor_enriquecimiento": 12.0,
+            "area_zona_mediana_km2": 0.02,
+            "area_zona_maxima_km2": 610.76
+          },
+          "precision_area": {
+            "precision": 0.022629,
+            "precision_base_azar": 0.000707,
+            "precision_techo_modelo_perfecto": 0.023582,
+            "pct_del_techo_alcanzado": 96.0,
+            "factor_enriquecimiento": 32.0,
+            "area_huella_km2": 142.8
+          }
+        },
+        "5": {
+          "umbral_probabilidad": 0.464612,
+          "pct_area_seleccionada": 5.0,
+          "n_pixeles_top": 1009245,
+          "recall": 1.0,
+          "plantas_capturadas": 105,
+          "precision_zonas": {
+            "n_zonas_candidatas": 4297,
+            "n_zonas_con_planta": 27,
+            "precision": 0.0063,
+            "precision_base_azar": 0.001123,
+            "factor_enriquecimiento": 5.6,
+            "area_zona_mediana_km2": 0.02,
+            "area_zona_maxima_km2": 786.86
+          },
+          "precision_area": {
+            "precision": 0.014028,
+            "precision_base_azar": 0.000707,
+            "precision_techo_modelo_perfecto": 0.014149,
+            "pct_del_techo_alcanzado": 99.1,
+            "factor_enriquecimiento": 19.8,
+            "area_huella_km2": 142.8
+          }
+        },
+        "7.5": {
+          "umbral_probabilidad": 0.299186,
+          "pct_area_seleccionada": 7.5,
+          "n_pixeles_top": 1513867,
+          "recall": 1.0,
+          "plantas_capturadas": 105,
+          "precision_zonas": {
+            "n_zonas_candidatas": 6921,
+            "n_zonas_con_planta": 21,
+            "precision": 0.003,
+            "precision_base_azar": 0.000953,
+            "factor_enriquecimiento": 3.2,
+            "area_zona_mediana_km2": 0.02,
+            "area_zona_maxima_km2": 1416.29
+          },
+          "precision_area": {
+            "precision": 0.009429,
+            "precision_base_azar": 0.000707,
+            "precision_techo_modelo_perfecto": 0.009433,
+            "pct_del_techo_alcanzado": 100.0,
+            "factor_enriquecimiento": 13.3,
+            "area_huella_km2": 142.8
+          }
+        },
+        "10": {
+          "umbral_probabilidad": 0.206813,
+          "pct_area_seleccionada": 10.0,
+          "n_pixeles_top": 2018490,
+          "recall": 1.0,
+          "plantas_capturadas": 105,
+          "precision_zonas": {
+            "n_zonas_candidatas": 9853,
+            "n_zonas_con_planta": 10,
+            "precision": 0.001,
+            "precision_base_azar": 0.000529,
+            "factor_enriquecimiento": 1.9,
+            "area_zona_mediana_km2": 0.02,
+            "area_zona_maxima_km2": 6807.66
+          },
+          "precision_area": {
+            "precision": 0.007075,
+            "precision_base_azar": 0.000707,
+            "precision_techo_modelo_perfecto": 0.007075,
+            "pct_del_techo_alcanzado": 100.0,
+            "factor_enriquecimiento": 10.0,
+            "area_huella_km2": 142.8
+          }
+        }
+      },
+      "resolucion_m": 100.0
+    },
+    "in_sample_por_region": {
+      "resolucion_m": 500,
+      "estrategia": "in_sample_por_region",
+      "n_plantas_evaluadas": 105,
+      "por_region": {
+        "Antofagasta": {
+          "n_pixeles_validos": 506488,
+          "n_plantas_evaluadas": 55,
+          "n_pixeles_marcados_por_plantas": 53,
+          "por_k": {
+            "0.5": {
+              "umbral_probabilidad": 0.930229,
+              "pct_area_seleccionada": 0.5,
+              "n_pixeles_top": 2533,
+              "recall": 0.5818,
+              "plantas_capturadas": 32,
+              "precision_zonas": {
+                "n_zonas_candidatas": 158,
+                "n_zonas_con_planta": 18,
+                "precision": 0.1139,
+                "precision_base_azar": 0.001735,
+                "factor_enriquecimiento": 65.7,
+                "area_zona_mediana_km2": 1.5,
+                "area_zona_maxima_km2": 57.25
+              },
+              "precision_area": {
+                "precision": 0.088827,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.136202,
+                "pct_del_techo_alcanzado": 65.2,
+                "factor_enriquecimiento": 130.4,
+                "area_huella_km2": 86.25
+              }
+            },
+            "1": {
+              "umbral_probabilidad": 0.872657,
+              "pct_area_seleccionada": 1.0,
+              "n_pixeles_top": 5065,
+              "recall": 0.7091,
+              "plantas_capturadas": 39,
+              "precision_zonas": {
+                "n_zonas_candidatas": 129,
+                "n_zonas_con_planta": 17,
+                "precision": 0.1318,
+                "precision_base_azar": 0.004175,
+                "factor_enriquecimiento": 31.6,
+                "area_zona_mediana_km2": 1.0,
+                "area_zona_maxima_km2": 319.75
+              },
+              "precision_area": {
+                "precision": 0.056071,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.068115,
+                "pct_del_techo_alcanzado": 82.3,
+                "factor_enriquecimiento": 82.3,
+                "area_huella_km2": 86.25
+              }
+            },
+            "2": {
+              "umbral_probabilidad": 0.761781,
+              "pct_area_seleccionada": 2.0,
+              "n_pixeles_top": 10130,
+              "recall": 0.8727,
+              "plantas_capturadas": 48,
+              "precision_zonas": {
+                "n_zonas_candidatas": 131,
+                "n_zonas_con_planta": 18,
+                "precision": 0.1374,
+                "precision_base_azar": 0.008131,
+                "factor_enriquecimiento": 16.9,
+                "area_zona_mediana_km2": 0.75,
+                "area_zona_maxima_km2": 483.75
+              },
+              "precision_area": {
+                "precision": 0.031293,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.034057,
+                "pct_del_techo_alcanzado": 91.9,
+                "factor_enriquecimiento": 45.9,
+                "area_huella_km2": 86.25
+              }
+            },
+            "3": {
+              "umbral_probabilidad": 0.649077,
+              "pct_area_seleccionada": 3.0,
+              "n_pixeles_top": 15195,
+              "recall": 1.0,
+              "plantas_capturadas": 55,
+              "precision_zonas": {
+                "n_zonas_candidatas": 165,
+                "n_zonas_con_planta": 15,
+                "precision": 0.0909,
+                "precision_base_azar": 0.009523,
+                "factor_enriquecimiento": 9.5,
+                "area_zona_mediana_km2": 0.75,
+                "area_zona_maxima_km2": 615.25
+              },
+              "precision_area": {
+                "precision": 0.021915,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.022705,
+                "pct_del_techo_alcanzado": 96.5,
+                "factor_enriquecimiento": 32.2,
+                "area_huella_km2": 86.25
+              }
+            },
+            "5": {
+              "umbral_probabilidad": 0.465982,
+              "pct_area_seleccionada": 5.0,
+              "n_pixeles_top": 25325,
+              "recall": 1.0,
+              "plantas_capturadas": 55,
+              "precision_zonas": {
+                "n_zonas_candidatas": 166,
+                "n_zonas_con_planta": 15,
+                "precision": 0.0904,
+                "precision_base_azar": 0.015389,
+                "factor_enriquecimiento": 5.9,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 795.75
+              },
+              "precision_area": {
+                "precision": 0.013583,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.013623,
+                "pct_del_techo_alcanzado": 99.7,
+                "factor_enriquecimiento": 19.9,
+                "area_huella_km2": 86.25
+              }
+            },
+            "7.5": {
+              "umbral_probabilidad": 0.306612,
+              "pct_area_seleccionada": 7.5,
+              "n_pixeles_top": 37987,
+              "recall": 1.0,
+              "plantas_capturadas": 55,
+              "precision_zonas": {
+                "n_zonas_candidatas": 232,
+                "n_zonas_con_planta": 14,
+                "precision": 0.0603,
+                "precision_base_azar": 0.015721,
+                "factor_enriquecimiento": 3.8,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 1459.0
+              },
+              "precision_area": {
+                "precision": 0.009082,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.009082,
+                "pct_del_techo_alcanzado": 100.0,
+                "factor_enriquecimiento": 13.3,
+                "area_huella_km2": 86.25
+              }
+            },
+            "10": {
+              "umbral_probabilidad": 0.212088,
+              "pct_area_seleccionada": 10.0,
+              "n_pixeles_top": 50649,
+              "recall": 1.0,
+              "plantas_capturadas": 55,
+              "precision_zonas": {
+                "n_zonas_candidatas": 313,
+                "n_zonas_con_planta": 9,
+                "precision": 0.0288,
+                "precision_base_azar": 0.010788,
+                "factor_enriquecimiento": 2.7,
+                "area_zona_mediana_km2": 0.25,
+                "area_zona_maxima_km2": 6270.0
+              },
+              "precision_area": {
+                "precision": 0.006812,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.006812,
+                "pct_del_techo_alcanzado": 100.0,
+                "factor_enriquecimiento": 10.0,
+                "area_huella_km2": 86.25
+              }
+            }
+          },
+          "n_muestras_entrenamiento": null
+        },
+        "Atacama": {
+          "n_pixeles_validos": 304815,
+          "n_plantas_evaluadas": 50,
+          "n_pixeles_marcados_por_plantas": 49,
+          "por_k": {
+            "0.5": {
+              "umbral_probabilidad": 0.901369,
+              "pct_area_seleccionada": 0.5,
+              "n_pixeles_top": 1525,
+              "recall": 0.56,
+              "plantas_capturadas": 28,
+              "precision_zonas": {
+                "n_zonas_candidatas": 132,
+                "n_zonas_con_planta": 20,
+                "precision": 0.1515,
+                "precision_base_azar": 0.001884,
+                "factor_enriquecimiento": 80.4,
+                "area_zona_mediana_km2": 0.75,
+                "area_zona_maxima_km2": 43.5
+              },
+              "precision_area": {
+                "precision": 0.11541,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.152787,
+                "pct_del_techo_alcanzado": 75.5,
+                "factor_enriquecimiento": 151.0,
+                "area_huella_km2": 58.25
+              }
+            },
+            "1": {
+              "umbral_probabilidad": 0.830334,
+              "pct_area_seleccionada": 1.0,
+              "n_pixeles_top": 3049,
+              "recall": 0.7,
+              "plantas_capturadas": 35,
+              "precision_zonas": {
+                "n_zonas_candidatas": 139,
+                "n_zonas_con_planta": 23,
+                "precision": 0.1655,
+                "precision_base_azar": 0.003556,
+                "factor_enriquecimiento": 46.5,
+                "area_zona_mediana_km2": 0.75,
+                "area_zona_maxima_km2": 97.75
+              },
+              "precision_area": {
+                "precision": 0.066579,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.076418,
+                "pct_del_techo_alcanzado": 87.1,
+                "factor_enriquecimiento": 87.1,
+                "area_huella_km2": 58.25
+              }
+            },
+            "2": {
+              "umbral_probabilidad": 0.734868,
+              "pct_area_seleccionada": 2.0,
+              "n_pixeles_top": 6097,
+              "recall": 0.86,
+              "plantas_capturadas": 43,
+              "precision_zonas": {
+                "n_zonas_candidatas": 177,
+                "n_zonas_con_planta": 20,
+                "precision": 0.113,
+                "precision_base_azar": 0.005532,
+                "factor_enriquecimiento": 20.4,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 137.25
+              },
+              "precision_area": {
+                "precision": 0.035591,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.038216,
+                "pct_del_techo_alcanzado": 93.1,
+                "factor_enriquecimiento": 46.6,
+                "area_huella_km2": 58.25
+              }
+            },
+            "3": {
+              "umbral_probabilidad": 0.659023,
+              "pct_area_seleccionada": 3.0,
+              "n_pixeles_top": 9145,
+              "recall": 0.88,
+              "plantas_capturadas": 44,
+              "precision_zonas": {
+                "n_zonas_candidatas": 140,
+                "n_zonas_con_planta": 18,
+                "precision": 0.1286,
+                "precision_base_azar": 0.010305,
+                "factor_enriquecimiento": 12.5,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 285.25
+              },
+              "precision_area": {
+                "precision": 0.024494,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.025478,
+                "pct_del_techo_alcanzado": 96.1,
+                "factor_enriquecimiento": 32.0,
+                "area_huella_km2": 58.25
+              }
+            },
+            "5": {
+              "umbral_probabilidad": 0.498048,
+              "pct_area_seleccionada": 5.0,
+              "n_pixeles_top": 15242,
+              "recall": 0.94,
+              "plantas_capturadas": 47,
+              "precision_zonas": {
+                "n_zonas_candidatas": 96,
+                "n_zonas_con_planta": 13,
+                "precision": 0.1354,
+                "precision_base_azar": 0.023684,
+                "factor_enriquecimiento": 5.7,
+                "area_zona_mediana_km2": 0.75,
+                "area_zona_maxima_km2": 725.5
+              },
+              "precision_area": {
+                "precision": 0.014959,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.015287,
+                "pct_del_techo_alcanzado": 97.9,
+                "factor_enriquecimiento": 19.6,
+                "area_huella_km2": 58.25
+              }
+            },
+            "7.5": {
+              "umbral_probabilidad": 0.314143,
+              "pct_area_seleccionada": 7.5,
+              "n_pixeles_top": 22862,
+              "recall": 1.0,
+              "plantas_capturadas": 50,
+              "precision_zonas": {
+                "n_zonas_candidatas": 143,
+                "n_zonas_con_planta": 9,
+                "precision": 0.0629,
+                "precision_base_azar": 0.021172,
+                "factor_enriquecimiento": 3.0,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 1323.0
+              },
+              "precision_area": {
+                "precision": 0.010192,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.010192,
+                "pct_del_techo_alcanzado": 100.0,
+                "factor_enriquecimiento": 13.3,
+                "area_huella_km2": 58.25
+              }
+            },
+            "10": {
+              "umbral_probabilidad": 0.214955,
+              "pct_area_seleccionada": 10.0,
+              "n_pixeles_top": 30482,
+              "recall": 1.0,
+              "plantas_capturadas": 50,
+              "precision_zonas": {
+                "n_zonas_candidatas": 169,
+                "n_zonas_con_planta": 2,
+                "precision": 0.0118,
+                "precision_base_azar": 0.013494,
+                "factor_enriquecimiento": 0.9,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 4538.5
+              },
+              "precision_area": {
+                "precision": 0.007644,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.007644,
+                "pct_del_techo_alcanzado": 100.0,
+                "factor_enriquecimiento": 10.0,
+                "area_huella_km2": 58.25
+              }
+            }
+          },
+          "n_muestras_entrenamiento": null
+        }
+      },
+      "combinado_por_k": {
+        "0.5": {
+          "recall": 0.5714,
+          "plantas_capturadas": 60,
+          "precision_zonas": 0.131,
+          "precision_base_azar": 0.001803,
+          "factor_enriquecimiento": 72.7,
+          "n_zonas_candidatas": 290,
+          "n_zonas_con_planta": 38,
+          "precision_area": {
+            "precision": 0.098817,
+            "precision_techo_modelo_perfecto": 0.142435,
+            "pct_del_techo_alcanzado": 69.4
+          }
+        },
+        "1": {
+          "recall": 0.7048,
+          "plantas_capturadas": 74,
+          "precision_zonas": 0.1493,
+          "precision_base_azar": 0.003854,
+          "factor_enriquecimiento": 38.7,
+          "n_zonas_candidatas": 268,
+          "n_zonas_con_planta": 40,
+          "precision_area": {
+            "precision": 0.06002,
+            "precision_techo_modelo_perfecto": 0.071235,
+            "pct_del_techo_alcanzado": 84.3
+          }
+        },
+        "2": {
+          "recall": 0.8667,
+          "plantas_capturadas": 91,
+          "precision_zonas": 0.1234,
+          "precision_base_azar": 0.006637,
+          "factor_enriquecimiento": 18.6,
+          "n_zonas_candidatas": 308,
+          "n_zonas_con_planta": 38,
+          "precision_area": {
+            "precision": 0.032908,
+            "precision_techo_modelo_perfecto": 0.03562,
+            "pct_del_techo_alcanzado": 92.4
+          }
+        },
+        "3": {
+          "recall": 0.9429,
+          "plantas_capturadas": 99,
+          "precision_zonas": 0.1082,
+          "precision_base_azar": 0.009882,
+          "factor_enriquecimiento": 10.9,
+          "n_zonas_candidatas": 305,
+          "n_zonas_con_planta": 33,
+          "precision_area": {
+            "precision": 0.022884,
+            "precision_techo_modelo_perfecto": 0.023747,
+            "pct_del_techo_alcanzado": 96.4
+          }
+        },
+        "5": {
+          "recall": 0.9714,
+          "plantas_capturadas": 102,
+          "precision_zonas": 0.1069,
+          "precision_base_azar": 0.018428,
+          "factor_enriquecimiento": 5.8,
+          "n_zonas_candidatas": 262,
+          "n_zonas_con_planta": 28,
+          "precision_area": {
+            "precision": 0.0141,
+            "precision_techo_modelo_perfecto": 0.014248,
+            "pct_del_techo_alcanzado": 99.0
+          }
+        },
+        "7.5": {
+          "recall": 1.0,
+          "plantas_capturadas": 105,
+          "precision_zonas": 0.0613,
+          "precision_base_azar": 0.0178,
+          "factor_enriquecimiento": 3.4,
+          "n_zonas_candidatas": 375,
+          "n_zonas_con_planta": 23,
+          "precision_area": {
+            "precision": 0.009499,
+            "precision_techo_modelo_perfecto": 0.009499,
+            "pct_del_techo_alcanzado": 100.0
+          }
+        },
+        "10": {
+          "recall": 1.0,
+          "plantas_capturadas": 105,
+          "precision_zonas": 0.0228,
+          "precision_base_azar": 0.011737,
+          "factor_enriquecimiento": 1.9,
+          "n_zonas_candidatas": 482,
+          "n_zonas_con_planta": 11,
+          "precision_area": {
+            "precision": 0.007125,
+            "precision_techo_modelo_perfecto": 0.007125,
+            "pct_del_techo_alcanzado": 100.0
+          }
+        }
+      }
+    },
+    "out_of_sample_loro": {
+      "resolucion_m": 500,
+      "estrategia": "leave_one_region_out",
+      "n_plantas_evaluadas": 105,
+      "por_region": {
+        "Antofagasta": {
+          "n_pixeles_validos": 506488,
+          "n_plantas_evaluadas": 55,
+          "n_pixeles_marcados_por_plantas": 53,
+          "por_k": {
+            "0.5": {
+              "umbral_probabilidad": 0.924583,
+              "pct_area_seleccionada": 0.5,
+              "n_pixeles_top": 2534,
+              "recall": 0.3091,
+              "plantas_capturadas": 17,
+              "precision_zonas": {
+                "n_zonas_candidatas": 225,
+                "n_zonas_con_planta": 15,
+                "precision": 0.0667,
+                "precision_base_azar": 0.00122,
+                "factor_enriquecimiento": 54.7,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 41.5
+              },
+              "precision_area": {
+                "precision": 0.063536,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.136148,
+                "pct_del_techo_alcanzado": 46.7,
+                "factor_enriquecimiento": 93.3,
+                "area_huella_km2": 86.25
+              }
+            },
+            "1": {
+              "umbral_probabilidad": 0.894632,
+              "pct_area_seleccionada": 1.0,
+              "n_pixeles_top": 5065,
+              "recall": 0.5455,
+              "plantas_capturadas": 30,
+              "precision_zonas": {
+                "n_zonas_candidatas": 202,
+                "n_zonas_con_planta": 14,
+                "precision": 0.0693,
+                "precision_base_azar": 0.002681,
+                "factor_enriquecimiento": 25.9,
+                "area_zona_mediana_km2": 1.0,
+                "area_zona_maxima_km2": 257.0
+              },
+              "precision_area": {
+                "precision": 0.04462,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.068115,
+                "pct_del_techo_alcanzado": 65.5,
+                "factor_enriquecimiento": 65.5,
+                "area_huella_km2": 86.25
+              }
+            },
+            "2": {
+              "umbral_probabilidad": 0.828379,
+              "pct_area_seleccionada": 2.0,
+              "n_pixeles_top": 10130,
+              "recall": 0.7455,
+              "plantas_capturadas": 41,
+              "precision_zonas": {
+                "n_zonas_candidatas": 144,
+                "n_zonas_con_planta": 17,
+                "precision": 0.1181,
+                "precision_base_azar": 0.007428,
+                "factor_enriquecimiento": 15.9,
+                "area_zona_mediana_km2": 1.75,
+                "area_zona_maxima_km2": 443.25
+              },
+              "precision_area": {
+                "precision": 0.029812,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.034057,
+                "pct_del_techo_alcanzado": 87.5,
+                "factor_enriquecimiento": 43.8,
+                "area_huella_km2": 86.25
+              }
+            },
+            "3": {
+              "umbral_probabilidad": 0.750448,
+              "pct_area_seleccionada": 3.0,
+              "n_pixeles_top": 15195,
+              "recall": 0.8,
+              "plantas_capturadas": 44,
+              "precision_zonas": {
+                "n_zonas_candidatas": 106,
+                "n_zonas_con_planta": 16,
+                "precision": 0.1509,
+                "precision_base_azar": 0.014997,
+                "factor_enriquecimiento": 10.1,
+                "area_zona_mediana_km2": 10.0,
+                "area_zona_maxima_km2": 518.5
+              },
+              "precision_area": {
+                "precision": 0.020533,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.022705,
+                "pct_del_techo_alcanzado": 90.4,
+                "factor_enriquecimiento": 30.1,
+                "area_huella_km2": 86.25
+              }
+            },
+            "5": {
+              "umbral_probabilidad": 0.565354,
+              "pct_area_seleccionada": 5.0,
+              "n_pixeles_top": 25325,
+              "recall": 0.8909,
+              "plantas_capturadas": 49,
+              "precision_zonas": {
+                "n_zonas_candidatas": 138,
+                "n_zonas_con_planta": 16,
+                "precision": 0.1159,
+                "precision_base_azar": 0.018421,
+                "factor_enriquecimiento": 6.3,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 802.25
+              },
+              "precision_area": {
+                "precision": 0.013268,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.013623,
+                "pct_del_techo_alcanzado": 97.4,
+                "factor_enriquecimiento": 19.5,
+                "area_huella_km2": 86.25
+              }
+            },
+            "7.5": {
+              "umbral_probabilidad": 0.433493,
+              "pct_area_seleccionada": 7.5,
+              "n_pixeles_top": 37987,
+              "recall": 0.9091,
+              "plantas_capturadas": 50,
+              "precision_zonas": {
+                "n_zonas_candidatas": 229,
+                "n_zonas_con_planta": 12,
+                "precision": 0.0524,
+                "precision_base_azar": 0.014511,
+                "factor_enriquecimiento": 3.6,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 2390.25
+              },
+              "precision_area": {
+                "precision": 0.009003,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.009082,
+                "pct_del_techo_alcanzado": 99.1,
+                "factor_enriquecimiento": 13.2,
+                "area_huella_km2": 86.25
+              }
+            },
+            "10": {
+              "umbral_probabilidad": 0.337057,
+              "pct_area_seleccionada": 10.0,
+              "n_pixeles_top": 50649,
+              "recall": 0.9091,
+              "plantas_capturadas": 50,
+              "precision_zonas": {
+                "n_zonas_candidatas": 189,
+                "n_zonas_con_planta": 8,
+                "precision": 0.0423,
+                "precision_base_azar": 0.018338,
+                "factor_enriquecimiento": 2.3,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 4718.0
+              },
+              "precision_area": {
+                "precision": 0.006752,
+                "precision_base_azar": 0.000681,
+                "precision_techo_modelo_perfecto": 0.006812,
+                "pct_del_techo_alcanzado": 99.1,
+                "factor_enriquecimiento": 9.9,
+                "area_huella_km2": 86.25
+              }
+            }
+          },
+          "n_muestras_entrenamiento": 136
+        },
+        "Atacama": {
+          "n_pixeles_validos": 304815,
+          "n_plantas_evaluadas": 50,
+          "n_pixeles_marcados_por_plantas": 49,
+          "por_k": {
+            "0.5": {
+              "umbral_probabilidad": 0.770727,
+              "pct_area_seleccionada": 0.5,
+              "n_pixeles_top": 1525,
+              "recall": 0.36,
+              "plantas_capturadas": 18,
+              "precision_zonas": {
+                "n_zonas_candidatas": 76,
+                "n_zonas_con_planta": 11,
+                "precision": 0.1447,
+                "precision_base_azar": 0.003251,
+                "factor_enriquecimiento": 44.5,
+                "area_zona_mediana_km2": 0.75,
+                "area_zona_maxima_km2": 84.75
+              },
+              "precision_area": {
+                "precision": 0.109508,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.152787,
+                "pct_del_techo_alcanzado": 71.7,
+                "factor_enriquecimiento": 143.3,
+                "area_huella_km2": 58.25
+              }
+            },
+            "1": {
+              "umbral_probabilidad": 0.691373,
+              "pct_area_seleccionada": 1.0,
+              "n_pixeles_top": 3049,
+              "recall": 0.58,
+              "plantas_capturadas": 29,
+              "precision_zonas": {
+                "n_zonas_candidatas": 104,
+                "n_zonas_con_planta": 18,
+                "precision": 0.1731,
+                "precision_base_azar": 0.004739,
+                "factor_enriquecimiento": 36.5,
+                "area_zona_mediana_km2": 1.12,
+                "area_zona_maxima_km2": 119.25
+              },
+              "precision_area": {
+                "precision": 0.066579,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.076418,
+                "pct_del_techo_alcanzado": 87.1,
+                "factor_enriquecimiento": 87.1,
+                "area_huella_km2": 58.25
+              }
+            },
+            "2": {
+              "umbral_probabilidad": 0.585151,
+              "pct_area_seleccionada": 2.0,
+              "n_pixeles_top": 6097,
+              "recall": 0.72,
+              "plantas_capturadas": 36,
+              "precision_zonas": {
+                "n_zonas_candidatas": 118,
+                "n_zonas_con_planta": 20,
+                "precision": 0.1695,
+                "precision_base_azar": 0.008323,
+                "factor_enriquecimiento": 20.4,
+                "area_zona_mediana_km2": 1.88,
+                "area_zona_maxima_km2": 161.5
+              },
+              "precision_area": {
+                "precision": 0.035591,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.038216,
+                "pct_del_techo_alcanzado": 93.1,
+                "factor_enriquecimiento": 46.6,
+                "area_huella_km2": 58.25
+              }
+            },
+            "3": {
+              "umbral_probabilidad": 0.474787,
+              "pct_area_seleccionada": 3.0,
+              "n_pixeles_top": 9145,
+              "recall": 0.76,
+              "plantas_capturadas": 38,
+              "precision_zonas": {
+                "n_zonas_candidatas": 106,
+                "n_zonas_con_planta": 20,
+                "precision": 0.1887,
+                "precision_base_azar": 0.013709,
+                "factor_enriquecimiento": 13.8,
+                "area_zona_mediana_km2": 4.0,
+                "area_zona_maxima_km2": 277.75
+              },
+              "precision_area": {
+                "precision": 0.024276,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.025478,
+                "pct_del_techo_alcanzado": 95.3,
+                "factor_enriquecimiento": 31.8,
+                "area_huella_km2": 58.25
+              }
+            },
+            "5": {
+              "umbral_probabilidad": 0.31186,
+              "pct_area_seleccionada": 5.0,
+              "n_pixeles_top": 15241,
+              "recall": 0.82,
+              "plantas_capturadas": 41,
+              "precision_zonas": {
+                "n_zonas_candidatas": 69,
+                "n_zonas_con_planta": 11,
+                "precision": 0.1594,
+                "precision_base_azar": 0.032188,
+                "factor_enriquecimiento": 5.0,
+                "area_zona_mediana_km2": 1.25,
+                "area_zona_maxima_km2": 764.75
+              },
+              "precision_area": {
+                "precision": 0.015025,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.015288,
+                "pct_del_techo_alcanzado": 98.3,
+                "factor_enriquecimiento": 19.7,
+                "area_huella_km2": 58.25
+              }
+            },
+            "7.5": {
+              "umbral_probabilidad": 0.212153,
+              "pct_area_seleccionada": 7.5,
+              "n_pixeles_top": 22862,
+              "recall": 0.92,
+              "plantas_capturadas": 46,
+              "precision_zonas": {
+                "n_zonas_candidatas": 159,
+                "n_zonas_con_planta": 6,
+                "precision": 0.0377,
+                "precision_base_azar": 0.017334,
+                "factor_enriquecimiento": 2.2,
+                "area_zona_mediana_km2": 0.25,
+                "area_zona_maxima_km2": 1738.75
+              },
+              "precision_area": {
+                "precision": 0.010104,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.010192,
+                "pct_del_techo_alcanzado": 99.1,
+                "factor_enriquecimiento": 13.2,
+                "area_huella_km2": 58.25
+              }
+            },
+            "10": {
+              "umbral_probabilidad": 0.150244,
+              "pct_area_seleccionada": 10.0,
+              "n_pixeles_top": 30482,
+              "recall": 0.94,
+              "plantas_capturadas": 47,
+              "precision_zonas": {
+                "n_zonas_candidatas": 130,
+                "n_zonas_con_planta": 1,
+                "precision": 0.0077,
+                "precision_base_azar": 0.009516,
+                "factor_enriquecimiento": 0.8,
+                "area_zona_mediana_km2": 0.5,
+                "area_zona_maxima_km2": 7243.75
+              },
+              "precision_area": {
+                "precision": 0.007578,
+                "precision_base_azar": 0.000764,
+                "precision_techo_modelo_perfecto": 0.007644,
+                "pct_del_techo_alcanzado": 99.1,
+                "factor_enriquecimiento": 9.9,
+                "area_huella_km2": 58.25
+              }
+            }
+          },
+          "n_muestras_entrenamiento": 284
+        }
+      },
+      "combinado_por_k": {
+        "0.5": {
+          "recall": 0.3333,
+          "plantas_capturadas": 35,
+          "precision_zonas": 0.0864,
+          "precision_base_azar": 0.001733,
+          "factor_enriquecimiento": 49.8,
+          "n_zonas_candidatas": 301,
+          "n_zonas_con_planta": 26,
+          "precision_area": {
+            "precision": 0.080808,
+            "precision_techo_modelo_perfecto": 0.142399,
+            "pct_del_techo_alcanzado": 56.7
+          }
+        },
+        "1": {
+          "recall": 0.5619,
+          "plantas_capturadas": 59,
+          "precision_zonas": 0.1046,
+          "precision_base_azar": 0.00338,
+          "factor_enriquecimiento": 30.9,
+          "n_zonas_candidatas": 306,
+          "n_zonas_con_planta": 32,
+          "precision_area": {
+            "precision": 0.052872,
+            "precision_techo_modelo_perfecto": 0.071235,
+            "pct_del_techo_alcanzado": 74.2
+          }
+        },
+        "2": {
+          "recall": 0.7333,
+          "plantas_capturadas": 77,
+          "precision_zonas": 0.1412,
+          "precision_base_azar": 0.007831,
+          "factor_enriquecimiento": 18.0,
+          "n_zonas_candidatas": 262,
+          "n_zonas_con_planta": 37,
+          "precision_area": {
+            "precision": 0.031983,
+            "precision_techo_modelo_perfecto": 0.03562,
+            "pct_del_techo_alcanzado": 89.8
+          }
+        },
+        "3": {
+          "recall": 0.781,
+          "plantas_capturadas": 82,
+          "precision_zonas": 0.1698,
+          "precision_base_azar": 0.014353,
+          "factor_enriquecimiento": 11.8,
+          "n_zonas_candidatas": 212,
+          "n_zonas_con_planta": 36,
+          "precision_area": {
+            "precision": 0.021939,
+            "precision_techo_modelo_perfecto": 0.023747,
+            "pct_del_techo_alcanzado": 92.4
+          }
+        },
+        "5": {
+          "recall": 0.8571,
+          "plantas_capturadas": 90,
+          "precision_zonas": 0.1304,
+          "precision_base_azar": 0.02301,
+          "factor_enriquecimiento": 5.7,
+          "n_zonas_candidatas": 207,
+          "n_zonas_con_planta": 27,
+          "precision_area": {
+            "precision": 0.013928,
+            "precision_techo_modelo_perfecto": 0.014249,
+            "pct_del_techo_alcanzado": 97.8
+          }
+        },
+        "7.5": {
+          "recall": 0.9143,
+          "plantas_capturadas": 96,
+          "precision_zonas": 0.0464,
+          "precision_base_azar": 0.015668,
+          "factor_enriquecimiento": 3.0,
+          "n_zonas_candidatas": 388,
+          "n_zonas_con_planta": 18,
+          "precision_area": {
+            "precision": 0.009417,
+            "precision_techo_modelo_perfecto": 0.009499,
+            "pct_del_techo_alcanzado": 99.1
+          }
+        },
+        "10": {
+          "recall": 0.9238,
+          "plantas_capturadas": 97,
+          "precision_zonas": 0.0282,
+          "precision_base_azar": 0.014743,
+          "factor_enriquecimiento": 1.9,
+          "n_zonas_candidatas": 319,
+          "n_zonas_con_planta": 9,
+          "precision_area": {
+            "precision": 0.007062,
+            "precision_techo_modelo_perfecto": 0.007125,
+            "pct_del_techo_alcanzado": 99.1
+          }
+        }
+      }
+    },
+    "contraste_umbrales_pep1": {
+      "recall_k3": {
+        "valor": 0.781,
+        "umbral_pep1": 0.85,
+        "cumple": false,
+        "umbral_alcanzable": true
+      },
+      "precision_k1": {
+        "valor": 0.052872,
+        "definicion": "solapamiento de área con la huella reconstruida por potencia",
+        "umbral_pep1": 0.15,
+        "cumple": false,
+        "techo_modelo_perfecto": 0.071235,
+        "umbral_alcanzable": false,
+        "pct_del_techo_alcanzado": 74.2
+      },
+      "precision_k1_por_zonas": {
+        "valor": 0.1046,
+        "definicion": "fracción de zonas candidatas conexas que contienen >=1 planta"
+      }
+    },
+    "nota_metodologica": "Las variantes in-sample (A) son optimistas: las plantas entrenaron el modelo que generó el mapa (PEP1 §6.3 reentrena al 100% para la etapa cartográfica). La cifra defendible es la LORO (B), donde las plantas de cada región nunca vieron el modelo que las evalúa. La comparación válida es A-500 vs B-500: misma grilla, única variable = qué vio el modelo.",
+    "nota_precision": "La precisión se mide a nivel de ZONA CANDIDATA (fracción de zonas conexas del top-K% que contienen al menos una planta real) y como SOLAPAMIENTO DE ÁREA contra una huella reconstruida por potencia instalada. Paneles.gdb es una capa de puntos (716 registros, área 0), no de polígonos: PEP1 §6.5 justificó el umbral 0,15 suponiendo huellas de ~20 km² que no existen en los datos.",
+    "sensibilidad_supuesto_huella": {
+      "unidad": "ha/MWac",
+      "potencia_total_mw": 7195.7,
+      "area_top_1pct_km2": 2028.0,
+      "techos_por_supuesto": {
+        "1.45 (LBNL 2022, fijo)": {
+          "huella_km2": 104.0,
+          "techo_k1_pct": 5.13
+        },
+        "2.00 (usado por defecto)": {
+          "huella_km2": 143.9,
+          "techo_k1_pct": 7.1
+        },
+        "2.25 (LBNL 2022, seguidor)": {
+          "huella_km2": 161.8,
+          "techo_k1_pct": 7.98
+        },
+        "2.95 (NREL 2013, área directa)": {
+          "huella_km2": 212.6,
+          "techo_k1_pct": 10.48
+        },
+        "3.60 (NREL 2013, área total)": {
+          "huella_km2": 259.2,
+          "techo_k1_pct": 12.78
+        }
+      },
+      "ha_por_mw_necesario_para_umbral_pep1": 4.23,
+      "conclusion": "Ninguna cifra publicada de ocupación de suelo alcanza el umbral de 0,15 de PEP1: el techo va de 5,13% a 12,78%. Se necesitarían 4,23 ha/MW, por encima de todo benchmark existente, y además con captura perfecta. La conclusión es invariante al supuesto elegido, no un artefacto de usar 2,0."
+    }
+  }
+}

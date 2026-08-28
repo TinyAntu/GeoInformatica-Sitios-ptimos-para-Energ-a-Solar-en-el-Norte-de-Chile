@@ -10,18 +10,30 @@ import surtgis
 import geopandas as gpd
 
 
-def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, out_dem_path: str | None = None, resolucion_m: float | None = None) -> None:
+def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, out_dem_path: str | None = None, resolucion_m: float | None = None, patron: str = '*.hgt', nodata_entrada: float | None = None) -> None:
+    """Fusiona un DEM, lo reproyecta a EPSG:32719 y deriva slope/aspect con surtgis.
+
+    `patron` permite alimentar el mismo proceso con GeoTIFF (exportaciones de Google Earth
+    Engine) además de las teselas .hgt de la NASA. Mientras la fuente sea la misma
+    (USGS/SRTMGL1_003, 1 arco-segundo) el resultado es equivalente: lo que hace comparables
+    las pendientes entre zonas es recorrer esta misma cadena, porque la pendiente depende de
+    la resolución a la que se deriva.
+
+    `nodata_entrada` fuerza el centinela de la fuente cuando el archivo no lo declara. Las
+    exportaciones de GEE dejan el exterior del recorte en 0 sin marcarlo como nodata; sin
+    este parámetro esos ceros entrarían al remuestreo como si fueran elevación real.
+    """
     print("Deduplicando y uniendo archivos DEM...")
     archivos_hgt_unicos = {}
     for carpeta in carpetas_dem:
-        for ruta in glob.glob(os.path.join(carpeta, '*.hgt')):
+        for ruta in glob.glob(os.path.join(carpeta, patron)):
             nombre = os.path.basename(ruta)
             if nombre not in archivos_hgt_unicos:
                 archivos_hgt_unicos[nombre] = ruta
 
     rutas_finales_hgt = list(archivos_hgt_unicos.values())
     if not rutas_finales_hgt:
-        raise ValueError("No se encontraron archivos .hgt en las carpetas proporcionadas.")
+        raise ValueError(f"No se encontraron archivos '{patron}' en las carpetas proporcionadas.")
     print(f"Se encontraron {len(rutas_finales_hgt)} archivos DEM únicos")
 
     salidas_derivados = [out_slope_path, out_aspect_path]
@@ -42,15 +54,21 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
             dst_crs = src.crs
             dem_utm = src.read(1).astype('float32')
         dem_utm[dem_utm == nodata_value] = np.nan  # in-place: conserva float32
+        # El DEM cacheado ya se escribió con un centinela negativo (ver nodata_salida abajo),
+        # así que aquí ambos coinciden; se recalcula igual para no depender de ese detalle.
+        nodata_salida = nodata_value if nodata_value < 0 else -9999.0
     else:
         # Nivel 3: proceso completo
         # Paso 1: merge en EPSG:4326
         print("Iniciando fusión de archivos DEM...")
         archivos_abiertos = [rasterio.open(fp) for fp in rutas_finales_hgt]
         try:
-            dem_geo, transform_geo = merge(archivos_abiertos)
+            dem_geo, transform_geo = merge(archivos_abiertos, nodata=nodata_entrada)
             src_crs = archivos_abiertos[0].crs
-            nodata_value = archivos_abiertos[0].nodata if archivos_abiertos[0].nodata is not None else -9999.0
+            if nodata_entrada is not None:
+                nodata_value = float(nodata_entrada)
+            else:
+                nodata_value = archivos_abiertos[0].nodata if archivos_abiertos[0].nodata is not None else -9999.0
         finally:
             for f in archivos_abiertos:
                 f.close()
@@ -87,6 +105,12 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
         del dem_geo  # liberar el DEM geográfico antes de derivar slope/aspect
         dem_utm[dem_utm == nodata_value] = np.nan  # in-place: conserva float32 sin copiar
 
+        # El centinela de ENTRADA no sirve como centinela de SALIDA si es no negativo. Las
+        # exportaciones de GEE usan 0, y 0 es un valor perfectamente válido de pendiente
+        # (terreno plano): escribir slope con nodata=0 marcaría como "sin dato" justamente el
+        # terreno más apto. Con las teselas .hgt (nodata -32768) esta rama no cambia nada.
+        nodata_salida = nodata_value if nodata_value < 0 else -9999.0
+
         # Paso 3: guardar DEM UTM para usarlo como caché en futuras ejecuciones
         if out_dem_path:
             parent = os.path.dirname(out_dem_path)
@@ -95,11 +119,11 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
             print(f"Guardando DEM reproyectado en {out_dem_path}...")
             meta_dem = {
                 'driver': 'GTiff', 'dtype': rasterio.float32, 'count': 1,
-                'nodata': nodata_value, 'transform': dst_transform, 'crs': dst_crs,
+                'nodata': nodata_salida, 'transform': dst_transform, 'crs': dst_crs,
                 'width': dst_width, 'height': dst_height,
             }
             with rasterio.open(out_dem_path, 'w', **meta_dem) as dst:
-                dst.write(np.where(np.isnan(dem_utm), nodata_value, dem_utm).astype('float32'), 1)
+                dst.write(np.where(np.isnan(dem_utm), nodata_salida, dem_utm).astype('float32'), 1)
 
     # Paso 4 : calcular slope y aspect sobre el DEM UTM.
     # Patrón de memoria: los CÁLCULOS se hacen en float64 (surtgis, Rust/PyO3, exige un
@@ -113,7 +137,7 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
 
     meta_derivados = {
         'driver': 'GTiff', 'dtype': rasterio.float32, 'count': 1,
-        'nodata': nodata_value, 'transform': dst_transform, 'crs': dst_crs,
+        'nodata': nodata_salida, 'transform': dst_transform, 'crs': dst_crs,
         'width': dem_utm.shape[1], 'height': dem_utm.shape[0],
     }
     for path in salidas_derivados:
@@ -123,7 +147,7 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
 
     print("Calculando slope...")
     slope_array = surtgis.slope(dem_utm, cell_size=cell_size, units='degrees')
-    slope_array[np.isnan(slope_array)] = nodata_value
+    slope_array[np.isnan(slope_array)] = nodata_salida
     print(f"Guardando slope en {out_slope_path}...")
     with rasterio.open(out_slope_path, 'w', **meta_derivados) as dst:
         dst.write(slope_array.astype('float32'), 1)
@@ -132,7 +156,7 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
     print("Calculando aspect...")
     aspect_array = surtgis.aspect_degrees(dem_utm, cell_size=cell_size)
     del dem_utm  # el DEM ya no se necesita
-    aspect_array[np.isnan(aspect_array)] = nodata_value
+    aspect_array[np.isnan(aspect_array)] = nodata_salida
     print(f"Guardando aspect en {out_aspect_path}...")
     with rasterio.open(out_aspect_path, 'w', **meta_derivados) as dst:
         dst.write(aspect_array.astype('float32'), 1)

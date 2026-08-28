@@ -365,7 +365,10 @@ def extraer_instalaciones_detectadas(
         poly_geoms = []
         poly_probs = []
 
-        for geom, val in shapes(mask_uint8, mask=binary_mask, transform=transform):
+        # connectivity=8: sin esto (default 4), dos píxeles aptos que solo se tocan en
+        # diagonal cuentan como polígonos separados, fragmentando artificialmente una zona
+        # contigua de alta aptitud en múltiples "candidatos" distintos.
+        for geom, val in shapes(mask_uint8, mask=binary_mask, transform=transform, connectivity=8):
             if val == 1:
                 shp = shape(geom)
                 if shp.area >= min_area_m2:
@@ -489,15 +492,19 @@ def load_to_postgis_db(
     utilizando SQLAlchemy y GeoPandas.
     """
     try:
+        import os
+        from urllib.parse import quote_plus
         from sqlalchemy import create_engine
 
         user = connection_config.get("user", "postgres")
-        pwd = connection_config.get("password", "")
+        # La contraseña puede venir del entorno (PGPASSWORD) para no versionarla en config.yaml.
+        pwd = os.environ.get("PGPASSWORD") or connection_config.get("password", "")
         host = connection_config.get("host", "localhost")
         port = connection_config.get("port", 5432)
         dbname = connection_config.get("dbname", "geoinformatica_db")
 
-        connection_url = f"postgresql://{user}:{pwd}@{host}:{port}/{dbname}"
+        # quote_plus escapa caracteres especiales de la contraseña en la URL de conexión.
+        connection_url = f"postgresql://{user}:{quote_plus(pwd)}@{host}:{port}/{dbname}"
         logger.info(f"Conectando a PostGIS en {host}:{port}/{dbname}...")
         engine = create_engine(connection_url)
 

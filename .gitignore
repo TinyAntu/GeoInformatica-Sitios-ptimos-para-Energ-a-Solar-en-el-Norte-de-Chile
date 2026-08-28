@@ -3,10 +3,14 @@ data/raw/
 data/result/
 data/results/
 data/results/mapa_probabilidad_aptitud.tif
+docs/
 
 *.tif
 *.gpkg
 *.shp
+# Motor Rust solarpv-rs y su dependencia surtgis: se clonan/compilan aparte, no se versionan aquí
+solarpv-rs/
+surtgis/
 # Python
 __pycache__ /
 *.pyc

@@ -39,10 +39,10 @@ postgis_validation:
   schema: "public"
   connection:
     host: "localhost"
-    port: 5432
+    port: 5433              # contenedor postgis/postgis (el 5432 es postgres vanilla, sin PostGIS)
     dbname: "geoinformatica_db"
     user: "postgres"
-    password: ""
+    password: ""            # NO versionar la contraseña aquí: pásala por la variable de entorno PGPASSWORD
   bounds_utm:
     min_x: 100000.0
     max_x: 900000.0
@@ -54,6 +54,26 @@ postgis_validation:
     min_lat: -30.0
     max_lat: -17.0
 
+# Integración con el motor Rust solarpv-rs (mapa de rendimiento kWh/kWp/año).
+# El binario se compila aparte: cargo build --release -p solarpv-cli --features terrain
+# La validación de CRS/extensión reutiliza postgis_validation.target_srid y bounds_utm.
+solarpv:
+  binario: "solarpv-rs/target/release/solarpv"  # ejecutable compilado ([[bin]] name = "solarpv")
+  lat: -23.6          # latitud de referencia (Antofagasta/Atacama)
+  lon: -69.5          # longitud de referencia
+  date: "2026-01-01"  # fecha base para la simulación anual
+  dem: "data/processed/dem_norte_32719.tif"  # DEM de entrada (mismo del pipeline)
+  out_prefix: "data/results/rendimiento"     # salida: data/results/rendimiento_specific_yield.tif
+  # Remuestreo del DEM antes de correr el motor (controla runtime/memoria).
+  # El motor corre ~25k celdas/s: el DEM nativo (~90 m, 86 M celdas) tarda ~1 h.
+  #   300  -> ~7.7 M celdas, ~5 min. Recomendado para demo/iteración.
+  #   null -> resolución nativa del DEM (~90 m): máxima fidelidad de terreno, ~1 h.
+  resolucion_m: 300
+  montaje:
+    tilt: 23            # inclinación (grados) para montaje fijo
+    surface_azimuth: 0  # azimut de la superficie (0 = mirando al norte en HS)
+    gcr: 0.3            # ground coverage ratio para el seguidor de un eje
+
 # Parámetros AHP y criterios de elegibilidad para candidatos negativos
 criterios:
   ghi_min:   160
@@ -64,6 +84,57 @@ criterios:
 # Preprocesamiento del DEM
 preprocesamiento:
   dem_resolucion_m: 90
+
+# Zona con la que se ENTRENÓ el modelo. Define a qué regiones se recorta la grilla de
+# inferencia y la infraestructura contra la que se miden las distancias.
+# Se declaran dos formas del mismo dato porque las capas no son consistentes: REGIONES_v1.shp
+# usa nombres completos ('Antofagasta'), mientras Paneles.gdb, Subestaciones y Almacenamiento
+# usan códigos numéricos ('02'). El filtro prueba la columna REGION contra `codigos` y, si la
+# capa no tiene esa columna, recorta espacialmente contra `regiones`.
+zona_estudio:
+  regiones: ["Antofagasta", "Atacama"]
+  codigos:  [2, 3, "2", "3", "02", "03", "II", "III", "Antofagasta", "Atacama"]
+
+# Evaluación de GENERALIZACIÓN: aplicar el modelo YA ENTRENADO sobre una región que no
+# participó del entrenamiento, sin reentrenar nada (scripts/run_zona.py --zona transferibilidad).
+#
+# Todos los productos van a un directorio propio: los scripts del pipeline escriben en rutas
+# fijas de data/results/ y correrlos sobre otra zona sobrescribiría los artefactos del norte
+# que cita el informe.
+#
+# El DEM se bajó de USGS/SRTMGL1_003 vía Google Earth Engine (ver obtencion_datos.py), que es
+# el MISMO producto NASA que las teselas .hgt del norte: 1 arco-segundo (~30 m), EPSG:4326,
+# int16. Así recorre exactamente la misma cadena que el norte (fusión -> reproyección a 32719
+# a 90 m bilinear -> surtgis). Esto no es un detalle de rendimiento: la pendiente depende de
+# la resolución del DEM, así que si Coquimbo llegara a slope por otro camino la prueba mediría
+# procesamiento en vez de geografía.
+#
+# `dem_nodata: 0` porque la exportación de GEE no aplicó unmask(-32768) y dejó el exterior del
+# polígono en 0 (37,8 % del ráster). Dentro de la región solo el 0,17 % de las celdas vale
+# exactamente 0 (~69 km² de franja costera), así que el costo de tratarlo como nodata es nulo.
+transferibilidad:
+  regiones: ["Coquimbo"]
+  codigos:  [4, "4", "04", "IV", "Coquimbo"]
+  dem_folders:
+    - "data/raw/Norte_Region_IV_DEM"
+  dem_patron:  "*.tif"
+  dem_nodata:  0
+  dem:      "data/processed/dem_coquimbo_32719.tif"
+  slope:    "data/processed/slope_coquimbo.tif"
+  aspect:   "data/processed/aspect_coquimbo.tif"
+  # Misma resolución de grilla que el LORO del norte (shap_espacial/perfiles_inversion), para
+  # que las cifras sean comparables sin corregir por resolución.
+  resolucion_m: 500
+  ha_por_mw: 2.0
+  dir_resultados: "data/results/coquimbo"
+  dir_figuras:    "figures/coquimbo"
+  # Latitud/longitud de referencia para el motor Rust. Solo fija el encabezado de la
+  # simulación: con `per_cell_lat: true` la geometría solar se recalcula celda a celda.
+  # El MONTAJE (tilt 23°, azimut, gcr) NO se cambia a propósito, aunque 23° no sea el óptimo
+  # de esta latitud: el cruce aptitud-rendimiento usa Spearman, que es de rangos, y mantener
+  # el montaje fijo entre zonas evita mezclar geografía con elección de diseño.
+  lat: -30.6
+  lon: -70.8
 
 # Parámetros de validación espacial (SBCV / LOROCV)
 validacion:
@@ -98,8 +169,33 @@ optuna_params:
     min: 2
     max: 10
 
-# El perfil 'balanceado' se carga dinámicamente desde los resultados del modelo ML
+# Explicabilidad espacial SHAP (Brecha 8). Grilla más gruesa que el mapa de aptitud porque
+# calcular SHAP por píxel es caro (500 m ≈ pocos min; 100 m = decenas de millones de píxeles).
+shap_espacial:
+  resolucion_m: 500
+  top_sitios: 5
+
+# Consenso vs. divergencia entre perfiles (Brecha 6, punto 4). Un píxel es "apto" en un
+# perfil si está en el top (100-percentil)% de ese perfil (comparación relativa: los 3
+# perfiles están en escalas distintas). Consenso = apto en los 3; divergencia = en 1 o 2.
+consenso_perfiles:
+  percentil_apto: 90   # 90 => top 10% de cada perfil
+
+# Perfiles de inversión (pesos AHP/WLC). El perfil 'balanceado' se carga dinámicamente
+# desde los resultados del modelo ML.
+# Lectura fijo vs. seguidor (T3, data/results/comparacion_montaje.json): sobre nuestro DEM
+# el seguidor de un eje rinde ~+52% sobre el montaje fijo en las zonas aptas (por encima
+# del ~+36% de referencia del autor del motor). El perfil 'agresivo' (prioriza
+# radiación/rendimiento) capitaliza esa ganancia; el 'conservador' (prioriza cercanía a
+# infraestructura) la pondera contra el mayor CAPEX/mantenimiento del seguidor. No se
+# modifican las matrices AHP: la comparación es una lectura, no un cambio de pesos.
 perfiles_inversion:
+  # Resolución de la grilla de scripts/profiles.py (mapas AHP conservador/agresivo). Usa el
+  # DEM como base, NO el GHI (~1 km) ni la resolución del mapa RF (salida_mapa.resolucion_m,
+  # 100 m): a 100 m este script mantiene ~15 arrays completos en memoria a la vez y puede
+  # agotar la RAM. 500 m sigue siendo ~2x más fino que el GHI original (mismo criterio de
+  # costo que shap_espacial.resolucion_m). Baja este valor si igual te quedas sin memoria.
+  resolucion_m: 500
   conservador:
     ghi: 0.10
     dist_transmision: 0.40

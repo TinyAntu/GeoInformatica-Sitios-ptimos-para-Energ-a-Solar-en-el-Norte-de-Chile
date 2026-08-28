@@ -1,16 +1,23 @@
-# Dependencias reales del pipeline (Python 3.10+).
-# `glob` y `os` son parte de la librería estándar (no van aquí) y `torch` no se usa.
-# Antes de la entrega, fija las versiones exactas de TU entorno (lo pide la rúbrica):
-#     pip freeze > requirements.txt      # o añade ==X.Y.Z a cada línea
-numpy
-pandas
-geopandas
-shapely
-rasterio
-scipy
-scikit-learn
-optuna
-joblib
-PyYAML
-matplotlib
-surtgis
+# Dependencias del pipeline (Python 3.10+). Versiones fijadas para reproducibilidad (T4).
+# `glob` y `os` son de la librería estándar; `torch` no se usa.
+numpy==2.5.2
+pandas==3.0.5
+geopandas==1.1.4
+shapely==2.1.2
+rasterio==1.5.1
+scipy==1.18.0
+scikit-learn==1.9.0
+optuna==4.9.0
+joblib==1.5.3
+PyYAML==6.0.3
+matplotlib==3.11.1
+shap==0.52.0
+surtgis==1.2.2
+# Inserción en vivo a PostGIS (Etapa 8, opcional; sin esto el pipeline genera el .sql igual).
+psycopg2-binary==2.9.12
+GeoAlchemy2==0.20.0
+# Visor web (T7). Para el deploy en la nube basta app/requirements.txt (solo estas 3).
+streamlit==1.61.1
+folium==0.20.0
+streamlit-folium==0.27.4
+Pillow==12.3.0

@@ -8,11 +8,17 @@ from rasterio.warp import reproject, Resampling
 from rasterio.features import rasterize
 from scipy.ndimage import distance_transform_edt
 
-# Ajuste de rutas para importar módulos locales
+# Ajuste de rutas para importar módulos locales. Va ANTES de los imports de src/ y scripts/:
+# al invocar el script directamente (python scripts/profiles.py) sys.path[0] es scripts/, no
+# la raíz del repo, así que sin esto los paquetes locales no resuelven.
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
+from src.explainability_spatial import zona_de_config
 from src.ahp import pesos_perfil  # AHP formal con Ratio de Consistencia (hallazgo 3.3)
+# Grilla de referencia = DEM (no GHI ~1 km), igual que generate_suitability_map.py
+# (hallazgo 2.1, opción B): mismo criterio para que los mapas AHP sean comparables con el RF.
+from scripts.generate_suitability_map import construir_grilla_referencia
 
 # --- FUNCIONES GEOESPACIALES EN MEMORIA ---
 
@@ -67,14 +73,32 @@ def normalizar_in_memory(arr, valid_mask, inverse=False):
 # --- LÓGICA PRINCIPAL DE PERFILES ---
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description='Perfiles de inversión AHP/WLC')
+    parser.add_argument('--config', default='config.yaml')
+    parser.add_argument('--zona', default=None,
+                        help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"). '
+                             'Sin este flag procesa la zona de entrenamiento y escribe en '
+                             'data/results, como siempre.')
+    args = parser.parse_args()
+
     print("=== INICIANDO GENERACIÓN DE PERFILES DE INVERSIÓN (AHP) ===")
 
     # 1. Cargar configuración de vectores y pesos
-    ruta_config = os.path.join(directorio_raiz, 'config.yaml')
+    ruta_config = args.config if os.path.isabs(args.config) else os.path.join(directorio_raiz, args.config)
     with open(ruta_config, 'r', encoding='utf-8') as file:
         config = yaml.safe_load(file)
 
     paths_raw = config['paths']['raw']
+
+    # Zona a procesar. Los pesos AHP no dependen de la región —son juicios de experto sobre
+    # los criterios—, así que la única diferencia es sobre qué terreno se evalúan.
+    
+    zona = zona_de_config(config, args.zona or 'zona_estudio')
+    bloque_zona = (config.get(args.zona) or {}) if args.zona else {}
+    dir_salida = os.path.join(
+        directorio_raiz, bloque_zona.get('dir_resultados', 'data/results'))
+    os.makedirs(dir_salida, exist_ok=True)
     perfiles_config = config.get('perfiles_inversion', {})
     ahp_config = config.get('ahp_perfiles', {})  # matrices AHP por perfil (opcional)
 
@@ -85,9 +109,9 @@ def main():
     # 2. Definir rutas explícitas a los rasters procesados
     dir_processed = os.path.join(directorio_raiz, 'data', 'processed')
     ghi_path    = os.path.join(dir_processed, 'GHI_32719.tif')
-    dem_path    = os.path.join(dir_processed, 'dem_norte_32719.tif')
-    slope_path  = os.path.join(dir_processed, 'slope_norte.tif')
-    aspect_path = os.path.join(dir_processed, 'aspect_norte.tif')
+    dem_path    = os.path.join(directorio_raiz, zona['dem'])
+    slope_path  = os.path.join(directorio_raiz, zona['slope'])
+    aspect_path = os.path.join(directorio_raiz, zona['aspect'])
 
     # Verificar existencia
     for path in [ghi_path, dem_path, slope_path, aspect_path]:
@@ -95,15 +119,28 @@ def main():
             print(f"ERROR: No se encontró el raster {path}")
             return
 
-    # 3. Cargar grilla base (GHI)
-    print(f"Cargando grilla base: {os.path.basename(ghi_path)}")
-    with rasterio.open(ghi_path) as src:
-        meta_base = src.meta.copy()
-        transform, crs = src.transform, src.crs
-        grid_shape = (src.height, src.width)
-        ghi_data = src.read(1)
-        nodata_ghi = src.nodata if src.nodata is not None else -9999.0
-        ghi_mask_valid = (ghi_data != nodata_ghi) & (~np.isnan(ghi_data))
+    # 3. Grilla base = DEM (resolución fina), NO el GHI (~1 km). El GHI se reproyecta/alinea
+    # a esta grilla más abajo, para que los mapas AHP de perfiles ya no queden ~10x menos
+    # resueltos que el mapa RF con el que se comparan en src/consenso_perfiles.py.
+    #
+    # OJO: NO se usa la misma resolución que 'salida_mapa.resolucion_m' (100 m, la del mapa
+    # RF). A esa resolución, este script mantiene ~15 arrays completos en memoria a la vez
+    # (8 variables crudas + 7 normalizadas) SIN el manejo de memoria de
+    # generate_suitability_map.py (que aplana a valid_mask de inmediato) — probó matar el
+    # proceso por falta de RAM. 'perfiles_inversion.resolucion_m' (default 500 m, mismo
+    # criterio que 'shap_espacial.resolucion_m' para el mismo tipo de costo) controla esto
+    # de forma independiente; sigue siendo ~2x más fino que el GHI original.
+    resolucion_m = bloque_zona.get('resolucion_m', perfiles_config.get('resolucion_m', 500))
+    print(f"Cargando grilla base: {os.path.basename(dem_path)}")
+    crs, transform, width, height = construir_grilla_referencia(dem_path, resolucion_m)
+    grid_shape = (height, width)
+    meta_base = {
+        'driver': 'GTiff', 'dtype': rasterio.float32, 'count': 1,
+        'crs': crs, 'transform': transform, 'width': width, 'height': height,
+        'nodata': -9999.0,
+    }
+    ghi_data = read_and_reproject_to_grid(ghi_path, crs, grid_shape, transform)
+    ghi_mask_valid = ~np.isnan(ghi_data)
 
     # 4. Preparar variables topográficas
     print("Alineando variables topográficas...")
@@ -139,7 +176,7 @@ def main():
     # 6. Máscara de validación (Regiones)
     regiones_path = os.path.join(directorio_raiz, paths_raw['vectores']['regiones'])
     regiones_gdf = gpd.read_file(regiones_path)
-    regiones_norte = regiones_gdf[regiones_gdf['REGION'].isin(['Antofagasta', 'Atacama'])].to_crs(crs)
+    regiones_norte = regiones_gdf[regiones_gdf['REGION'].isin(zona['regiones'])].to_crs(crs)
     region_mask = get_rasterized_mask(regiones_norte, grid_shape, transform)
 
     valid_mask = (
@@ -201,7 +238,7 @@ def main():
                     mapa_wlc[(mask_excl == 1) & (mapa_wlc != -9999.0)] = 0.0
 
         # Guardar en disco
-        out_path = os.path.join(directorio_raiz, f'data/results/aptitud_{nombre_perfil}.tif')
+        out_path = os.path.join(dir_salida, f'aptitud_{nombre_perfil}.tif')
         with rasterio.open(out_path, 'w', **meta_base) as dst:
             dst.write(mapa_wlc, 1)
         print(f" -> Guardado exitosamente: {out_path}")
