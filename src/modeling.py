@@ -263,9 +263,9 @@ def entrenar_modelo_rf(
             print(f"  Gráficos alternativos guardados en: {pr_alt_path}, {roc_alt_path}")
             print(f"\n  Diferencia AUC (ratio {ratio} vs {ratio_alt}): {abs(auc - auc_alt):.4f}")
             if abs(auc - auc_alt) < 0.02:
-                print("  → Modelo robusto al cambio de ratio.")
+                print("  -> Modelo robusto al cambio de ratio.")
             else:
-                print("  → Revisar balance del dataset, el AUC varía con el ratio.")
+                print("  -> Revisar balance del dataset, el AUC varía con el ratio.")
         else:
             print(f"  [AVISO] No hay suficientes negativos para el ratio alternativo 1:{ratio_alt}")
             auc_alt, brier_alt, y_test_a, y_probs_a = None, None, None, None

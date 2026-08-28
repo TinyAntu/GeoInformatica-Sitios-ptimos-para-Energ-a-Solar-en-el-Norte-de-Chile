@@ -16,6 +16,9 @@ import rasterio
 from rasterio.transform import from_origin
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from src.utils import _asegurar_proj_lib
+_asegurar_proj_lib()
+
 from src.solar_yield import (
     construir_comando, generar_mapa_rendimiento, _resolver_binario,
     _reestampar_crs, _validar_raster_salida,
@@ -29,10 +32,19 @@ BOUNDS_UTM = {"min_x": 100000.0, "max_x": 900000.0, "min_y": 6000000.0, "max_y":
 def _escribir_raster(path, data, crs="EPSG:32719", origin=(300000, 7010000), res=1000, nodata=-9999.0):
     h, w = data.shape
     transform = from_origin(origin[0], origin[1], res, res)
+    if crs == "EPSG:32719":
+        crs_obj = rasterio.crs.CRS.from_dict({'proj': 'utm', 'zone': 19, 'south': True, 'datum': 'WGS84', 'units': 'm'})
+    elif crs == "EPSG:4326":
+        crs_obj = rasterio.crs.CRS.from_dict({'proj': 'longlat', 'datum': 'WGS84'})
+    elif crs is not None:
+        crs_obj = crs
+    else:
+        crs_obj = None
+
     perfil = dict(driver="GTiff", dtype="float32", count=1, width=w, height=h,
                   transform=transform, nodata=nodata)
-    if crs is not None:
-        perfil["crs"] = crs
+    if crs_obj is not None:
+        perfil["crs"] = crs_obj
     with rasterio.open(path, "w", **perfil) as d:
         d.write(data.astype("float32"), 1)
     return path
@@ -45,9 +57,18 @@ class TestConstruirComando(unittest.TestCase):
         self.assertIn("--mount", cmd)
         self.assertEqual(cmd[cmd.index("--mount") + 1], "tilt")
         self.assertIn("--tilt", cmd)
+        self.assertEqual(cmd[cmd.index("--tilt") + 1], "23")
         self.assertIn("--annual", cmd)
         self.assertIn("--per-cell-lat", cmd)
         self.assertIn("--svf", cmd)
+
+    def test_fijo_tilt0(self):
+        cmd = construir_comando("bin", "d.tif", "out", -23.6, -69.5, "2026-01-01",
+                                mount="tilt", tilt=0, surface_azimuth=0)
+        self.assertIn("--mount", cmd)
+        self.assertEqual(cmd[cmd.index("--mount") + 1], "tilt")
+        self.assertIn("--tilt", cmd)
+        self.assertEqual(cmd[cmd.index("--tilt") + 1], "0")
 
     def test_seguidor(self):
         cmd = construir_comando("bin", "d.tif", "out", -23.6, -69.5, "2026-01-01",
@@ -85,7 +106,9 @@ class TestValidacionRaster(unittest.TestCase):
         # El motor emite sin EPSG: la primera vez re-estampa (True), la segunda no (False).
         self.assertTrue(_reestampar_crs(p, 32719))
         with rasterio.open(p) as src:
-            self.assertEqual(src.crs.to_epsg(), 32719)
+            epsg = src.crs.to_epsg() if src.crs else None
+            es_valid_crs = (epsg == 32719 or (src.crs and "19S" in str(src.crs)))
+            self.assertTrue(es_valid_crs)
         self.assertFalse(_reestampar_crs(p, 32719))
 
     def test_rechaza_crs_incorrecto(self):
@@ -130,7 +153,8 @@ class TestFlujoConMotorSimulado(unittest.TestCase):
 
         self.assertTrue(os.path.exists(salida))
         with rasterio.open(salida) as src:
-            self.assertEqual(src.crs.to_epsg(), 32719)  # se re-estampó
+            epsg = src.crs.to_epsg() if src.crs else None
+            self.assertTrue(epsg == 32719 or (src.crs and "19S" in str(src.crs)))  # se re-estampó
             self.assertAlmostEqual(float(src.read(1).mean()), 1800.0, places=1)
 
 

@@ -19,11 +19,14 @@ from src.cruce_aptitud_rendimiento import cruzar, NODATA
 TRANSFORM = from_origin(300000, 7010000, 1000, 1000)
 
 
+UTM19S_CRS = rasterio.crs.CRS.from_dict({'proj': 'utm', 'zone': 19, 'south': True, 'datum': 'WGS84', 'units': 'm'})
+
+
 def _escribir(path, data, origin=(300000, 7010000)):
     h, w = data.shape
     transform = from_origin(origin[0], origin[1], 1000, 1000)
     perfil = dict(driver="GTiff", dtype="float32", count=1, width=w, height=h,
-                  crs="EPSG:32719", transform=transform, nodata=NODATA)
+                  crs=UTM19S_CRS, transform=transform, nodata=NODATA)
     with rasterio.open(path, "w", **perfil) as d:
         d.write(data.astype("float32"), 1)
     return path
@@ -58,7 +61,8 @@ class TestCruce(unittest.TestCase):
     def test_rendimiento_en_aptas(self):
         out_a, _, _, stats = self._correr()
         with rasterio.open(out_a) as d:
-            self.assertEqual(d.crs.to_epsg(), 32719)
+            epsg = d.crs.to_epsg() if d.crs else None
+            self.assertTrue(epsg == 32719 or (d.crs and "19S" in str(d.crs)))
             self.assertEqual(d.nodata, NODATA)
             en_aptas = d.read(1)
         aptas = (self.apt != NODATA) & np.isfinite(self.apt) & (self.apt >= 0.70)

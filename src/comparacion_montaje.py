@@ -21,10 +21,10 @@ import rasterio
 from src.cruce_aptitud_rendimiento import _alinear_rendimiento, _resumen, NODATA
 
 
-def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bloque_km=15):
-    """Compara rendimiento fijo vs. seguidor en las zonas aptas y guarda un JSON.
+def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bloque_km=15, fijo_tilt0_path=None):
+    """Compara rendimiento fijo vs. seguidor (y opcionalmente fijo tilt=0) en zonas aptas y guarda un JSON.
 
-    Devuelve el dict de estadísticas. Ambos rasters de rendimiento se alinean a la grilla
+    Devuelve el dict de estadísticas. Todos los rasters de rendimiento se alinean a la grilla
     del mapa de aptitud (EPSG:32719) antes de comparar, celda a celda.
 
     `tamano_bloque_km` (mismo valor que `validacion.tamano_bloque_km`, usado por el SBCV del
@@ -41,17 +41,22 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
         transform = apt.transform
         fijo = _alinear_rendimiento(fijo_path, apt)
         seguidor = _alinear_rendimiento(seguidor_path, apt)
+        fijo_tilt0 = _alinear_rendimiento(fijo_tilt0_path, apt) if fijo_tilt0_path else None
 
     base_valida = (
         (aptitud != NODATA) & np.isfinite(aptitud)
         & np.isfinite(fijo) & np.isfinite(seguidor)
     )
+    if fijo_tilt0 is not None:
+        base_valida &= np.isfinite(fijo_tilt0)
+
     aptas = base_valida & (aptitud >= umbral)
     if not aptas.any():
-        raise ValueError("No hay celdas aptas comunes a fijo, seguidor y aptitud.")
+        raise ValueError("No hay celdas aptas comunes a las configuraciones de montaje y aptitud.")
 
     fijo_aptas = fijo[aptas]
     seg_aptas = seguidor[aptas]
+    fijo_tilt0_aptas = fijo_tilt0[aptas] if fijo_tilt0 is not None else None
 
     # Ganancia agregada (medias) y ganancia por celda (más honesta ante distribuciones sesgadas).
     # OJO: "por celda" trata cada píxel como independiente (ver docstring) — se mantiene como
@@ -77,6 +82,10 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
         round(float(100.0 * gain_por_bloque.median()), 2) if n_bloques > 0 else None
     )
 
+    entradas = {"fijo_tilt23": fijo_path, "seguidor": seguidor_path}
+    if fijo_tilt0_path:
+        entradas["fijo_tilt0"] = fijo_tilt0_path
+
     stats = {
         "umbral_probabilidad": float(umbral),
         "celdas_aptas": int(aptas.sum()),
@@ -89,8 +98,16 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
         "ganancia_seguidor_mediana_bloque_pct": ganancia_mediana_bloque_pct,
         "referencia_autor_pct": 36.0,
         "interpretacion": _interpretar(ganancia_media_pct, n_bloques, int(aptas.sum())),
-        "entradas": {"fijo": fijo_path, "seguidor": seguidor_path},
+        "entradas": entradas,
     }
+
+    if fijo_tilt0_aptas is not None:
+        stats["rendimiento_fijo_tilt0_aptas"] = _resumen(fijo_tilt0_aptas)
+        gan_tilt23_vs_tilt0 = float(100.0 * (fijo_aptas.mean() / fijo_tilt0_aptas.mean() - 1))
+        gan_seg_vs_tilt0 = float(100.0 * (seg_aptas.mean() / fijo_tilt0_aptas.mean() - 1))
+        stats["ganancia_tilt23_vs_tilt0_media_pct"] = round(gan_tilt23_vs_tilt0, 2)
+        stats["ganancia_seguidor_vs_tilt0_media_pct"] = round(gan_seg_vs_tilt0, 2)
+
     os.makedirs(os.path.dirname(out_json) or ".", exist_ok=True)
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2, ensure_ascii=False)

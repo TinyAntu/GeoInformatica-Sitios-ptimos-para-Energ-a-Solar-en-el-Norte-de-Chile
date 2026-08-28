@@ -1,95 +1,100 @@
-# GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile
-Problema. Identificar sitios óptimos para nuevas plantas fotovoltaicas en una región del norte de Chile mediante análisis multicriterio GIS, considerando irradiación, topografía, accesibilidad y restricciones.
+# Sitios Óptimos para Plantas Solares Fotovoltaicas en el Norte de Chile
 
-```
+![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
+![Rust Motor](https://img.shields.io/badge/Rust-solarpv--rs-orange.svg)
+![CRS](https://img.shields.io/badge/CRS-EPSG%3A32719-green.svg)
+![Pipeline](https://img.shields.io/badge/Pipeline-Idempotente-brightgreen.svg)
+
+
+**Problema:** Identificar sitios óptimos para nuevas plantas fotovoltaicas en las regiones de Antofagasta y Atacama (Norte de Chile) mediante análisis multicriterio GIS y aprendizaje automático (Random Forest + AHP), integrando físicas reales de producción fotovoltaica y explicabilidad espacial.
+
+```bash
 git clone https://github.com/TinyAntu/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile.git
+cd GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile
 pip install -r requirements.txt
+
+# Ejecución base (Antofagasta y Atacama):
 python scripts/run_pipeline.py --config config.yaml
+
+# Evaluación de transferencia (incluyendo Coquimbo):
+python scripts/run_pipeline.py --config config.yaml --con-transferencia
 ```
 
-Para descargar los datos por favor acceda a: https://drive.google.com/drive/folders/1ujkfnfOVDNQYJluZw06fFZAsKIZ-7T0z?usp=sharing
+> **Descarga de Datos Crudos:** Accede a la carpeta oficial en Google Drive: [Descargar datos del proyecto](https://drive.google.com/drive/folders/1ujkfnfOVDNQYJluZw06fFZAsKIZ-7T0z?usp=sharing).
 
-## Reproducibilidad
+---
 
-El pipeline es idempotente (chequeo incremental por etapa) y usa `random_state=42`. Para
-reproducir de cero:
+## Reproducibilidad y Arquitectura
 
-1. **Datos**: descargar desde el Drive de arriba y dejarlos en `data/` (ver rutas en
-   `config.yaml`; `data/` está en `.gitignore`).
-2. **Entorno Python**: `pip install -r requirements.txt` (versiones fijadas).
-3. **Pipeline base** (etapas 1–10): `python scripts/run_pipeline.py --config config.yaml`.
-   Incluye la Etapa 9 (cruce con rendimiento, se omite sola si aún no generaste el mapa
-   del motor) y la Etapa 10 (consenso entre perfiles).
-4. **Motor Rust** (opcional, para rendimiento): ver sección siguiente. Commits exactos
-   usados para estos resultados:
-   - `solarpv-rs` @ `41cdaaf` — https://github.com/franciscoparrao/solarpv-rs
-   - `surtgis` @ `v1.2.2` (`4c60871`) — https://github.com/franciscoparrao/surtgis
-5. **Tests**: `python -m unittest discover -s tests`.
+El pipeline es **idempotente** (chequeo incremental de frescura por marcas de tiempo en cada etapa) y propaga de forma estricta `random_state=42` para garantizar la reproducibilidad de todas las métricas.
 
-Orden recomendado end-to-end (con motor): pipeline base → comparación de montaje →
-cruce → SHAP global → SHAP espacial → assets → visor. Los pasos de SHAP deben correr antes de generar los assets (el visor consume sus salidas).
+1. **Datos:** Descargar datos desde Google Drive y colocarlos en la carpeta `data/` respetando la estructura declarada en `config.yaml`.
+2. **Entorno Python:** `pip install -r requirements.txt`. *(Nota en Windows: si `rasterio` o `pyproj` no detectan automáticamente `proj.db`, define `$env:PROJ_LIB=".../rasterio/proj_data"`)*.
+3. **Pipeline Base (Etapas 1–18):** `python scripts/run_pipeline.py --config config.yaml`.
+4. **Motor Rust (`solarpv-rs`):** Opcional pero recomendado para simulación física de rendimiento (`kWh/kWp/año`). Commits exactos:
+   - `solarpv-rs` @ `41cdaaf` — [https://github.com/franciscoparrao/solarpv-rs](https://github.com/franciscoparrao/solarpv-rs)
+   - `surtgis` @ `v1.2.2` (`4c60871`) — [https://github.com/franciscoparrao/surtgis](https://github.com/franciscoparrao/surtgis)
+5. **Pruebas Unitarias:** `python -m unittest discover -s tests`.
 
-| Componente | Comando |
-|---|---|
-| Pipeline base (aptitud, validación, cruce, consenso) | `python scripts/run_pipeline.py --config config.yaml` |
-| Rendimiento PV fijo / seguidor             | `python scripts/run_solar_yield.py [--mount tracker]` |
-| Cruce aptitud × rendimiento (= Etapa 9)    | `python scripts/run_cruce.py --config config.yaml` |
-| Comparación fijo vs. seguidor              | `python scripts/run_comparacion_montaje.py [--regenerar]` |
-| Consenso entre perfiles (= Etapa 10)       | `python scripts/run_consenso.py --config config.yaml` |
-| Explicabilidad SHAP global                 | `python scripts/run_shap.py --config config.yaml` |
-| Explicabilidad SHAP espacial (Brecha 8)    | `python scripts/run_shap_spatial.py --config config.yaml` |
-| Recall@K / Precisión@K vs. umbrales PEP1   | `python scripts/run_metricas_topk.py --config config.yaml` |
-| Assets del visor                           | `python scripts/generate_web_assets.py --config config.yaml` |
-| Visor web                                  | `streamlit run app/visor.py` |
+---
 
-**Resoluciones configurables** (cuidado de editar la clave correcta):
-`solarpv.resolucion_m` (motor de rendimiento, 300 m; `null` = DEM nativo ~90 m, ~1 h por
-montaje considerando 12 núcleos — requiere `--regenerar`), `shap_espacial.resolucion_m` (500 m),
-`salida_mapa.resolucion_m` (mapa RF, 100 m), `preprocesamiento.dem_resolucion_m` (DEM base).
+## Tabla de Comandos del Proyecto
 
-## Motor de rendimiento fotovoltaico (solarpv-rs)
+| Componente / Etapa | Comando | Descripción |
+|---|---|---|
+| **Pipeline base completo** | `python scripts/run_pipeline.py --config config.yaml` | Ejecuta las etapas 1 a 18 (aptitud RF, AHP, cruce, consenso, SHAP y assets) |
+| **Pipeline (solo modelo)** | `python scripts/run_pipeline.py --config config.yaml --sin-mapas` | Omite generación de rasters pesados para iteración rápida en ML |
+| **Rendimiento Fijo (23°)** | `python scripts/run_solar_yield.py --mount tilt [--tilt 23]` | Genera mapa de rendimiento fijo a inclinación óptima por latitud (`~23°`) |
+| **Rendimiento Plano (0°)** | `python scripts/run_solar_yield.py --mount tilt --tilt 0` | Genera mapa de rendimiento fijo en superficie horizontal (`tilt = 0°`) |
+| **Rendimiento Seguidor** | `python scripts/run_solar_yield.py --mount tracker` | Genera mapa de rendimiento para seguidor de un eje (`gcr = 0.3`) |
+| **Cruce Aptitud × Rendimiento** | `python scripts/run_cruce.py --config config.yaml` | Cruza celda a celda la aptitud probabilística con la producción física |
+| **Comparación de Montaje (0°, 23°, Tracker)** | `python scripts/run_comparacion_montaje.py [--incluir-tilt0] [--regenerar]` | Cuantifica ganancias entre horizontal (`0°`), latitud (`23°`) y seguidor (`tracker`) |
+| **Consenso de Perfiles** | `python scripts/run_consenso.py --config config.yaml` | Evalúa consenso vs. divergencia entre perfiles Conservador, Agresivo y RF |
+| **Explicabilidad SHAP Global** | `python scripts/run_shap.py --config config.yaml` | Importancia global de características por autovector de Shapley |
+| **Explicabilidad SHAP Espacial** | `python scripts/run_shap_spatial.py --config config.yaml` | Grilla espacial de variable dominante por píxel |
+| **Métricas Top-K (PEP1)** | `python scripts/run_metricas_topk.py --config config.yaml` | Métricas Recall@K y Precision@K vs. umbrales del informe |
+| **Assets del Visor** | `python scripts/generate_web_assets.py --config config.yaml` | Prepara imágenes y JSON livianos para el visor web |
+| **Visor Web Interactivo** | `streamlit run app/visor.py` | Lanza la aplicación interactiva de exploración local |
 
-La aptitud (RF + AHP) responde *dónde* es apto instalar; el motor Rust `solarpv-rs`
-agrega *cuánto produce* cada sitio (kWh/kWp/año). Se compila aparte y no se versiona en
-este repo (está en `.gitignore`). El paso en grilla del motor (terrain) reutiliza la
-librería `surtgis`, así que hay que clonar **ambos** repos como hermanos, y necesitas
-tener Rust/cargo instalado (`https://rustup.rs`):
+---
 
-```
-# Ambos repos deben quedar en la raíz del proyecto (surtgis es dependencia de path de solarpv-rs)
+## Motor de Rendimiento Fotovoltaico (`solarpv-rs`)
+
+Mientras que la aptitud (RF + AHP) responde **dónde** es conveniente instalar, el motor Rust `solarpv-rs` calcula **cuánto produce** cada sitio en unidades energéticas reales (`kWh/kWp/año`), considerando sombreado por relieve (DEM) y trayectoria solar celda a celda en `EPSG:32719`.
+
+### Configuración y Compilación
+Clonar ambos repositorios como hermanos en la raíz del proyecto y compilar el binario Rust:
+
+```bash
 git clone https://github.com/franciscoparrao/solarpv-rs.git
 git clone https://github.com/franciscoparrao/surtgis.git
 cd solarpv-rs
-cargo build --release -p solarpv-cli   # el feature 'terrain' ya viene activo por defecto en el CLI
-cd ..
+cargo build --release -p solarpv-cli
 ```
 
-Esto genera el binario `solarpv-rs/target/release/solarpv` (nombre del `[[bin]]`, no
-`solarpv-cli`). Ajusta `solarpv.binario` en `config.yaml` si queda en otra ruta. Luego
-genera el mapa de rendimiento:
+### Opciones de Montaje y Tilt
+- **Inclinación Óptima a Latitud (`tilt = 23°`):** Inclinación fija estándar para Antofagasta/Atacama (`data/results/rendimiento_fijo_specific_yield.tif`).
+- **Montaje Plano Horizontal (`tilt = 0°`):** Módulos sin inclinación horizontal (`data/results/rendimiento_fijo_tilt0_specific_yield.tif`).
+- **Seguidor Solar de Un Eje (`tracker`):** Seguidor eje norte-sur con backtracking (`data/results/rendimiento_seguidor_specific_yield.tif`).
 
-```
-python scripts/run_solar_yield.py --config config.yaml            # montaje fijo
-python scripts/run_solar_yield.py --mount tracker                 # seguidor de un eje
-python scripts/run_solar_yield.py --dry-run                       # solo imprime el comando
-```
-
-Salida: `data/results/rendimiento_fijo_specific_yield.tif` (EPSG:32719), directamente
-comparable celda a celda con `data/results/mapa_probabilidad_aptitud.tif`.
-
-## Visor interactivo (demo)
-
-Mapa web con las capas de aptitud, rendimiento y su cruce superpuestas sobre un basemap.
-Los assets livianos (PNG + JSON) se generan a partir de los rasters de resultados:
-
-```
-python scripts/generate_web_assets.py --config config.yaml   # crea app/assets/
-streamlit run app/visor.py                                    # visor local
+Para evaluar y comparar las 3 tecnologías sobre las zonas aptas:
+```bash
+python scripts/run_comparacion_montaje.py --incluir-tilt0
 ```
 
-**Deploy en la nube (Streamlit Community Cloud)**
-1. Los assets de `app/assets/` (pocos MB) se versionan en el repo; los `.tif` pesados no
-   hacen falta en entorno cloud.
-2. En share.streamlit.io: repo del proyecto, archivo principal `app/visor.py`.
-3. Usa `app/requirements.txt` (mínimo: streamlit/folium/streamlit-folium) para un build
-   liviano — el visor no necesita las librerías geoespaciales del pipeline.
+---
+
+## Visor Web Interactivo (Streamlit)
+
+La aplicación web permite inspeccionar interactivamente las capas de aptitud, rendimiento físico y explicabilidad SHAP superpuestas en un mapa basemap.
+
+```bash
+python scripts/generate_web_assets.py --config config.yaml   # Genera app/assets/
+streamlit run app/visor.py                                    # Inicia visor local
+```
+
+### Despliegue en Streamlit Community Cloud
+1. Los assets en `app/assets/` están versionados en el repositorio (no se requieren los `.tif` pesados en la nube).
+2. Configurar en [share.streamlit.io](https://share.streamlit.io) apuntando a `app/visor.py`.
+3. El despliegue usa `app/requirements.txt` para mantener una construcción ligera de paquetes.
+

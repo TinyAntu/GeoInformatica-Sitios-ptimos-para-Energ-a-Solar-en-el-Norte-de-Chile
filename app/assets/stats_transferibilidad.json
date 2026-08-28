@@ -345,7 +345,7 @@
         "desplazamiento_medias_sd": 0.897
       }
     },
-    "mapa_aptitud": "data/results/coquimbo/mapa_probabilidad_aptitud.tif",
+    "mapa_aptitud": "data\\results\\coquimbo\\mapa_probabilidad_aptitud.tif",
     "nota_lectura": "El techo de precisión depende de la razón huella/área propuesta, que es propia de cada zona: comparar la precisión cruda entre regiones no informa. Lo comparable es 'pct_del_techo_alcanzado' y el factor de enriquecimiento.",
     "nota_extrapolacion": "Un Random Forest no extrapola: fuera del rango de entrenamiento devuelve el valor de la hoja más cercana. Leer 'covariate_shift.pct_fuera_de_rango' antes de atribuir cualquier caída a la geografía.",
     "sensibilidad_filtro_lineas": {
@@ -569,7 +569,7 @@
       "balanceado_vs_agresivo": -0.1005
     },
     "interpretacion": "El 1.1% de la zona válida es apta en los 3 perfiles (consenso: robusto ante la preferencia del stakeholder); 20.72% es apta solo en 1 o 2 perfiles (divergencia: la decisión depende del criterio priorizado). Nota metodológica: el umbral relativo por percentil fija la MISMA proporción de área apta (10%) en los 3 perfiles por construcción — este 'consenso' mide superposición entre conjuntos top-K de igual tamaño, no una medida absoluta de calidad territorial. La correlación de Spearman entre perfiles (más abajo) complementa esta lectura con la magnitud del acuerdo, no solo el solapamiento binario.",
-    "salida_raster": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/consenso_perfiles.tif"
+    "salida_raster": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\consenso_perfiles.tif"
   },
   "shap_espacial": {
     "resolucion_m": 500,
@@ -602,21 +602,21 @@
       "6": "dist_subestaciones"
     },
     "rasters": {
-      "slope": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_slope.tif",
-      "ghi": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_ghi.tif",
-      "elev": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_elev.tif",
-      "northness": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_northness.tif",
-      "dist_transmision": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dist_transmision.tif",
-      "dist_almacen": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dist_almacen.tif",
-      "dist_subestaciones": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dist_subestaciones.tif",
-      "dominante": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/shap_espacial_dominante.tif"
+      "slope": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_slope.tif",
+      "ghi": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_ghi.tif",
+      "elev": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_elev.tif",
+      "northness": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_northness.tif",
+      "dist_transmision": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_dist_transmision.tif",
+      "dist_almacen": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_dist_almacen.tif",
+      "dist_subestaciones": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_dist_subestaciones.tif",
+      "dominante": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\shap_espacial_dominante.tif"
     },
     "waterfalls": [
-      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top1.png",
-      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top2.png",
-      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top3.png",
-      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top4.png",
-      "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/figures/coquimbo/shap_waterfall_top5.png"
+      "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\figures/coquimbo\\shap_waterfall_top1.png",
+      "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\figures/coquimbo\\shap_waterfall_top2.png",
+      "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\figures/coquimbo\\shap_waterfall_top3.png",
+      "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\figures/coquimbo\\shap_waterfall_top4.png",
+      "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\figures/coquimbo\\shap_waterfall_top5.png"
     ]
   },
   "cruce": {
@@ -649,8 +649,8 @@
       "nota": "Si el spearman y el overlap son altos, el ranking (y los top-N sitios que se reporten) son robustos a esta elección de fórmula; si son bajos, la elección de 'producto' pesa más de lo que parece y debería justificarse con más alternativas antes de presentarse como definitiva."
     },
     "salidas": {
-      "rendimiento_en_aptas": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/rendimiento_en_aptas.tif",
-      "aptitud_x_rendimiento": "/home/braulinho/Desktop/GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile/data/results/coquimbo/aptitud_x_rendimiento.tif"
+      "rendimiento_en_aptas": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\rendimiento_en_aptas.tif",
+      "aptitud_x_rendimiento": "C:\\Users\\spide\\OneDrive\\Escritorio\\GeoCieeree\\GeoInformatica-Sitios-ptimos-para-Energ-a-Solar-en-el-Norte-de-Chile\\data/results/coquimbo\\aptitud_x_rendimiento.tif"
     }
   }
 }

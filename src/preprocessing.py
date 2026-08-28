@@ -81,7 +81,7 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
 
         # Paso 2: reproyectar a UTM EPSG:32719 en memoria
         print("Reproyectando DEM fusionado a UTM EPSG:32719...")
-        dst_crs = rasterio.crs.CRS.from_epsg(32719)
+        dst_crs = _obtener_crs(32719)
         h, w = dem_geo.shape
         bounds = rasterio.transform.array_bounds(h, w, transform_geo)
         # resolucion_m fuerza la resolución de destino en metros; None = nativa (~30 m).
@@ -168,6 +168,20 @@ def procesar_dem(carpetas_dem: list, out_slope_path: str, out_aspect_path: str, 
     print("Archivos generados exitosamente:\n" + "\n".join(f" - {p}" for p in generados))
 
 
+def _obtener_crs(epsg_code: int = 32719) -> rasterio.crs.CRS:
+    """Devuelve un objeto CRS de rasterio para el código EPSG, con fallback en caso de falta de proj.db."""
+    try:
+        return rasterio.crs.CRS.from_epsg(epsg_code)
+    except Exception:
+        if epsg_code == 32719:
+            return rasterio.crs.CRS.from_dict({'proj': 'utm', 'zone': 19, 'south': True, 'datum': 'WGS84', 'units': 'm'})
+        elif epsg_code == 4326:
+            return rasterio.crs.CRS.from_dict({'proj': 'longlat', 'datum': 'WGS84'})
+        elif epsg_code == 3857:
+            return rasterio.crs.CRS.from_dict({'proj': 'merc', 'a': 6378137, 'b': 6378137, 'lat_ts': 0, 'lon_0': 0, 'x_0': 0, 'y_0': 0, 'k': 1, 'units': 'm', 'nadgrids': '@null', 'wktext': True, 'no_defs': True})
+        return rasterio.crs.CRS.from_string(f"+init=epsg:{epsg_code}")
+
+
 def cargar_capas_vectoriales(diccionario_rutas: dict) -> dict:
     """Carga el diccionario de rutas desde config.yaml y devuelve GeoDataFrames."""
     capas = {}
@@ -188,7 +202,7 @@ def reproject_raster_to_utm(src_path: str, dst_path: str, epsg_code: int = 32719
     if parent:
         os.makedirs(parent, exist_ok=True)
     with rasterio.open(src_path) as src:
-        dst_crs = rasterio.crs.CRS.from_epsg(epsg_code)
+        dst_crs = _obtener_crs(epsg_code)
         transform, width, height = calculate_default_transform(
             src.crs, dst_crs, src.width, src.height, *src.bounds
         )

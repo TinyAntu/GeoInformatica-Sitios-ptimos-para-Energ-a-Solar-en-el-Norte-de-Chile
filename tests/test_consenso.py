@@ -13,11 +13,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.consenso_perfiles import analizar_consenso, NODATA
 
 
+UTM19S_CRS = rasterio.crs.CRS.from_dict({'proj': 'utm', 'zone': 19, 'south': True, 'datum': 'WGS84', 'units': 'm'})
+
+
 def _escribir(path, data):
     h, w = data.shape
     transform = from_origin(300000, 7010000, 1000, 1000)
     perfil = dict(driver="GTiff", dtype="float32", count=1, width=w, height=h,
-                  crs="EPSG:32719", transform=transform, nodata=NODATA)
+                  crs=UTM19S_CRS, transform=transform, nodata=NODATA)
     with rasterio.open(path, "w", **perfil) as d:
         d.write(data.astype("float32"), 1)
     return path
@@ -43,7 +46,8 @@ class TestConsenso(unittest.TestCase):
         stats = analizar_consenso(self.balanceado, self.conservador, self.agresivo, 90, out_r, out_j)
 
         with rasterio.open(out_r) as d:
-            self.assertEqual(d.crs.to_epsg(), 32719)
+            epsg = d.crs.to_epsg() if d.crs else None
+            self.assertTrue(epsg == 32719 or (d.crs and "19S" in str(d.crs)))
             self.assertEqual(d.nodata, NODATA)
             vals = np.unique(d.read(1))
         # Solo categorías válidas 0..3 (más el nodata si lo hubiera; aquí todo es válido).

@@ -41,10 +41,13 @@ def _alinear_rendimiento(rendimiento_path, base):
     """
     destino = np.full((base.height, base.width), np.nan, dtype=np.float32)
     with rasterio.open(rendimiento_path) as ren:
+        src_crs = ren.crs
+        if not src_crs or not getattr(src_crs, 'is_projected', False):
+            src_crs = base.crs
         reproject(
             source=rasterio.band(ren, 1),
             destination=destino,
-            src_transform=ren.transform, src_crs=ren.crs, src_nodata=ren.nodata,
+            src_transform=ren.transform, src_crs=src_crs, src_nodata=ren.nodata,
             dst_transform=base.transform, dst_crs=base.crs,
             resampling=Resampling.bilinear,
             dst_nodata=np.nan,
