@@ -28,6 +28,22 @@ python scripts/run_pipeline.py --config config.yaml --con-transferencia
 
 El pipeline es **idempotente** (chequeo incremental de frescura por marcas de tiempo en cada etapa) y propaga de forma estricta `random_state=42` para garantizar la reproducibilidad de todas las métricas.
 
+Las 18 etapas están organizadas en **6 fases**, siguiendo el flujo canónico de un pipeline
+geoespacial (datos crudos → limpieza → transformación → análisis → visualización):
+
+| Fase | Nombre | Qué produce |
+|---|---|---|
+| 1 | Preprocesamiento | `data/processed/`: DEM, slope, aspect y GHI en EPSG:32719 |
+| 2 | Features y modelamiento | Dataset de muestras, `model_rf.pkl` y validación espacial (SBCV + LOROCV) |
+| 3 | Inferencia y superficies | Mapa de aptitud RF, perfiles AHP/WLC y rendimiento físico (motor Rust) |
+| 4 | Análisis integrado | Cruce aptitud×rendimiento, consenso, SHAP global/espacial y métricas Top-K |
+| 5 | Transferibilidad | Evaluación sobre Coquimbo sin reentrenar (opt-in) |
+| 6 | Persistencia y difusión | PostGIS, figuras del informe y assets del visor |
+
+Cada etapa corre en **su propio proceso**, de modo que su memoria se devuelve al sistema al
+terminar. Si una corrida se corta por falta de memoria, `--desde-fase N` la retoma sin rehacer
+lo anterior.
+
 1. **Datos:** Descargar datos desde Google Drive y colocarlos en la carpeta `data/` respetando la estructura declarada en `config.yaml`.
 2. **Entorno Python:** `pip install -r requirements.txt`. *(Nota en Windows: si `rasterio` o `pyproj` no detectan automáticamente `proj.db`, define `$env:PROJ_LIB=".../rasterio/proj_data"`)*.
 3. **Pipeline Base (Etapas 1–18):** `python scripts/run_pipeline.py --config config.yaml`.
@@ -42,8 +58,14 @@ El pipeline es **idempotente** (chequeo incremental de frescura por marcas de ti
 
 | Componente / Etapa | Comando | Descripción |
 |---|---|---|
-| **Pipeline base completo** | `python scripts/run_pipeline.py --config config.yaml` | Ejecuta las etapas 1 a 18 (aptitud RF, AHP, cruce, consenso, SHAP y assets) |
-| **Pipeline (solo modelo)** | `python scripts/run_pipeline.py --config config.yaml --sin-mapas` | Omite generación de rasters pesados para iteración rápida en ML |
+| **Pipeline base completo** | `python scripts/run_pipeline.py --config config.yaml` | Ejecuta las 6 fases / 18 etapas (aptitud RF, AHP, cruce, consenso, SHAP y assets) |
+| **Pipeline (solo modelo)** | `python scripts/run_pipeline.py --config config.yaml --sin-mapas` | Corre solo hasta la fase 2; omite rasters pesados para iteración rápida en ML |
+| **Ver el plan de fases** | `python scripts/run_pipeline.py --listar-fases` | Imprime las 6 fases con sus etapas, sin ejecutar nada |
+| **Simulación** | `python scripts/run_pipeline.py --dry-run` | Muestra qué etapas correrían y cuáles están al día |
+| **Reanudar desde una fase** | `python scripts/run_pipeline.py --desde-fase 3` | Retoma tras un fallo o un corte por memoria |
+| **Correr una sola fase** | `python scripts/run_pipeline.py --solo-fase 4` | Ejecuta únicamente esa fase |
+| **Preprocesamiento (fase 1)** | `python scripts/run_preprocesamiento.py --config config.yaml` | DEM, slope/aspect y reproyección del GHI a EPSG:32719 |
+| **Entrenamiento (etapa 3)** | `python scripts/run_entrenamiento.py --config config.yaml` | Muestreo espacial y Random Forest con Optuna |
 | **Rendimiento Fijo (23°)** | `python scripts/run_solar_yield.py --mount tilt [--tilt 23]` | Genera mapa de rendimiento fijo a inclinación óptima por latitud (`~23°`) |
 | **Rendimiento Plano (0°)** | `python scripts/run_solar_yield.py --mount tilt --tilt 0` | Genera mapa de rendimiento fijo en superficie horizontal (`tilt = 0°`) |
 | **Rendimiento Seguidor** | `python scripts/run_solar_yield.py --mount tracker` | Genera mapa de rendimiento para seguidor de un eje (`gcr = 0.3`) |
