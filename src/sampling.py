@@ -52,12 +52,27 @@ def generar_dataset_muestras(
     criterios: dict,
     ratio: int = 3,
     random_state: int = 42,
+    estrategia_negativos: str = 'ahp_filtrado',
 ) -> tuple:
     """
     Genera muestras positivas (plantas existentes) y un pool de negativos geográficamente 
     representativo incluyendo distancias euclidianas continuas a la red de transmisión.
+
+    Estrategias de negativos soportadas (`estrategia_negativos`):
+      - 'ahp_filtrado': buffer 5 km + exclusiones territoriales + filtros técnicos AHP
+        (GHI >= min, slope <= max, elev <= max, dist_trans <= max).
+      - 'fondo_aleatorio': buffer 5 km + exclusiones territoriales (sin filtros técnicos AHP).
+      - 'fondo_objetivo': buffer 5 km + exclusiones territoriales + condicionado a proximidad
+        de red (dist_trans <= max) pero sin filtros geofísicos (GHI, pendiente, cota).
     """
-    print("Iniciando muestreo de datos espaciales (Con Variable de Distancia)...")
+    estrategias_validas = ('ahp_filtrado', 'fondo_aleatorio', 'fondo_objetivo')
+    if estrategia_negativos not in estrategias_validas:
+        raise ValueError(
+            f"Estrategia de negativos no reconocida: '{estrategia_negativos}'. "
+            f"Opciones válidas: {estrategias_validas}."
+        )
+
+    print(f"Iniciando muestreo de datos espaciales (estrategia: '{estrategia_negativos}')...")
     rng = np.random.default_rng(random_state)
 
     # 1. Filtrado por región
@@ -261,25 +276,43 @@ def generar_dataset_muestras(
     # Recalcular northness para positivas tras corregir NaN en aspect
     positivas['northness'] = np.cos(np.radians(positivas['aspect']))
 
-    # 9. Limpiar negativos y aplicar criterios AHP dinámicos (Agregando dist_transmision a dropna)
+    # 9. Limpiar negativos y aplicar criterios según estrategia_negativos
     negativos_pre = negativos_pre.dropna(subset=['ghi', 'slope', 'aspect', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones'])
     print(f"  Negativos tras limpiar NaN: {len(negativos_pre)}")
 
-    filtro_ahp = (
-        (negativos_pre['ghi']   >= criterios['ghi_min']) &
-        (negativos_pre['slope'] <= criterios['slope_max']) &
-        (negativos_pre['elev']  <= criterios['elev_max'])
-    )
+    if estrategia_negativos == 'ahp_filtrado':
+        # Filtros AHP completos: GHI, pendiente, elevación y distancia máxima a transmisión
+        filtro = (
+            (negativos_pre['ghi']   >= criterios['ghi_min']) &
+            (negativos_pre['slope'] <= criterios['slope_max']) &
+            (negativos_pre['elev']  <= criterios['elev_max'])
+        )
+        if len(lineas_norte) > 0:
+            filtro &= (negativos_pre['dist_transmision'] <= criterios.get('dist_max', 20000))
+        pool_negativos = negativos_pre[filtro].copy()
 
-    # Si hay líneas, aplicar también el criterio de distancia máxima a transmisión
-    if len(lineas_norte) > 0:
-        filtro_ahp &= negativos_pre['dist_transmision'] <= criterios.get('dist_max', 20000)
+    elif estrategia_negativos == 'fondo_aleatorio':
+        # Fondo regional no filtrado: sin filtros técnicos AHP
+        pool_negativos = negativos_pre.copy()
+
+    elif estrategia_negativos == 'fondo_objetivo':
+        # Fondo de grupo objetivo: condicionado a accesibilidad a infraestructura (dist_transmision <= dist_max)
+        # pero SIN filtros de pendiente, elevación ni GHI
+        if len(lineas_norte) > 0:
+            filtro = (negativos_pre['dist_transmision'] <= criterios.get('dist_max', 20000))
+            pool_negativos = negativos_pre[filtro].copy()
+        else:
+            pool_negativos = negativos_pre.copy()
+    else:
+        raise ValueError(
+            f"Estrategia de negativos no reconocida: '{estrategia_negativos}'. "
+            "Opciones válidas: 'ahp_filtrado', 'fondo_aleatorio', 'fondo_objetivo'."
+        )
 
     # Crear pool de negativos finales con clase 0
-    pool_negativos = negativos_pre[filtro_ahp].copy()
     pool_negativos['clase'] = 0
 
-    print(f"\n=== RESUMEN MUESTREO ===")
+    print(f"\n=== RESUMEN MUESTREO (Estrategia: {estrategia_negativos}) ===")
     print(f"Muestras positivas generadas: {len(positivas)}")
     print(f"Pool de negativos elegibles:  {len(pool_negativos)}")
 
