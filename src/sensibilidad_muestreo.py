@@ -1,18 +1,24 @@
 """Análisis de sensibilidad al diseño de pseudo-ausencias en el modelo de aptitud solar.
 
 Evalúa cómo condiciona la selección de negativos lo que el Random Forest aprende,
-contrastando 3 diseños de muestreo:
-  1) 'ahp_filtrado': buffer 5 km + exclusiones territoriales + filtros técnicos AHP.
+contrastando 4 diseños de muestreo:
+  1) 'ahp_filtrado': línea base — buffer 5 km + exclusiones + filtros técnicos AHP.
   2) 'fondo_aleatorio': buffer 5 km + exclusiones territoriales (sin filtros técnicos).
-  3) 'fondo_objetivo': buffer 5 km + condicionado a cercanía de red (sin filtros geofísicos).
+  3) 'sin_filtros_geofisicos': ablación de la línea base, conserva solo la distancia a red.
+  4) 'grupo_objetivo': target-group background (Phillips et al. 2009) — candidatos extraídos
+     del entorno de subestaciones y almacenamiento, donde el sector ya prospectó.
 
 Calcula la estabilidad de métricas (SBCV 5-fold sobre bloques espaciales), la jerarquía
-SHAP de variables, la correlación de rangos (Kendall's tau y Spearman rho) y la dominancia
-de macro-familias ('acceso a red' vs 'recurso / topografía').
+SHAP de variables, la correlación de rangos (Kendall's tau y Spearman rho, cada uno con su
+p-valor) y la dominancia de macro-familias ('acceso a red' vs 'recurso / topografía').
+
+Los hiperparámetros del RF NO se fijan aquí: se leen de los que Optuna eligió para el modelo
+del proyecto, o la comparación no diría nada sobre el modelo que cita el informe.
 """
 
 import os
 import json
+from itertools import combinations
 from typing import Dict, Any, Tuple
 import numpy as np
 import pandas as pd
@@ -36,11 +42,58 @@ from src.spatial_validation import (
 FAMILIA_RED = ['dist_transmision', 'dist_subestaciones', 'dist_almacen']
 FAMILIA_RECURSO = ['ghi', 'slope', 'northness', 'elev']
 
+# Variables cuya distribución se compara entre pools de negativos (panel de boxplots).
+VARIABLES_BOXPLOT = ('slope', 'ghi', 'elev', 'dist_transmision')
+
 ESTRATEGIAS_NOMBRES = {
     'ahp_filtrado': 'AHP Filtrado (Línea Base)',
     'fondo_aleatorio': 'Fondo Aleatorio (Sin Filtros)',
-    'fondo_objetivo': 'Fondo Objetivo (Red Relajada)',
+    'sin_filtros_geofisicos': 'Sin Filtros Geofísicos (Ablación)',
+    'grupo_objetivo': 'Grupo Objetivo (TGB)',
 }
+
+# Orden canónico de comparación. La línea base va primera: el resto se contrasta contra ella.
+ESTRATEGIAS = ('ahp_filtrado', 'fondo_aleatorio', 'sin_filtros_geofisicos', 'grupo_objetivo')
+
+COLORES_ESTRATEGIA = {
+    'ahp_filtrado': '#9A4A1E',            # Cobre Atacama
+    'fondo_aleatorio': '#2E6B4A',         # Verde
+    'sin_filtros_geofisicos': '#1B2430',  # Azul oscuro
+    'grupo_objetivo': '#F2B134',          # Sol
+}
+
+
+def cargar_hiperparametros_del_modelo(ruta_metricas: str) -> Tuple[dict, str]:
+    """Recupera los hiperparámetros que Optuna eligió para el modelo del proyecto.
+
+    La comparación entre diseños de pseudo-ausencias solo es concluyente si se hace sobre EL
+    bosque del proyecto: con otra profundidad o otro mínimo de hoja, la jerarquía SHAP puede
+    ordenarse distinto y la conclusión no se traslada al modelo que cita el informe.
+    `entrenar_modelo_rf` ya persiste esos valores en `best_params` de model_rf_metrics.json.
+
+    Devuelve (params_rf, origen) donde `origen` documenta de dónde salieron, para dejarlo
+    registrado en el JSON de salida.
+    """
+    # class_weight='balanced' no lo elige Optuna: es fijo en src/modeling.py:77 y debe
+    # replicarse aquí o los modelos no serían comparables.
+    if os.path.exists(ruta_metricas):
+        with open(ruta_metricas, 'r', encoding='utf-8') as f:
+            best = (json.load(f) or {}).get('best_params') or {}
+        if best:
+            params = {
+                'n_estimators': int(best['n_estimators']),
+                'max_depth': int(best['max_depth']),
+                'min_samples_leaf': int(best['min_samples_leaf']),
+                'class_weight': 'balanced',
+            }
+            return params, f"best_params de {os.path.basename(ruta_metricas)} (Optuna)"
+
+    raise FileNotFoundError(
+        f"No se encontraron los hiperparámetros del modelo en '{ruta_metricas}'. "
+        "Corre antes el entrenamiento (scripts/run_entrenamiento.py): comparar los diseños "
+        "de pseudo-ausencias con hiperparámetros distintos a los del modelo del proyecto "
+        "haría que la conclusión sobre la jerarquía SHAP no aplique al modelo publicado."
+    )
 
 
 def _calcular_estadisticas_distribucion(df: pd.DataFrame, features: list[str]) -> dict:
@@ -172,25 +225,27 @@ def evaluar_estrategia_individual(
             'ratio_red_vs_recurso': round(float(pct_red / pct_recurso), 2) if pct_recurso > 0 else None,
         },
         'estadisticas_negativos': stats_negativos,
-        'pool_negativos_df': pool_negativos,
+        # Solo las columnas que los boxplots necesitan, como arrays sueltos. Antes se
+        # devolvía el GeoDataFrame completo y los tres (el de 'fondo_aleatorio' es varias
+        # veces mayor) quedaban vivos a la vez junto a las matrices SHAP.
+        '_muestras_para_boxplot': {
+            var: pool_negativos[var].dropna().to_numpy(dtype=float, copy=True)
+            for var in VARIABLES_BOXPLOT if var in pool_negativos.columns
+        },
     }
 
 
 def _generar_figuras_sensibilidad(resultados: dict, figures_dir: str):
     """Genera gráficos comparativos de SHAP y de distribución de covariables."""
     os.makedirs(figures_dir, exist_ok=True)
-    estrategias = ['ahp_filtrado', 'fondo_aleatorio', 'fondo_objetivo']
+    estrategias = list(ESTRATEGIAS)
 
     # 1. Gráfico de barras agrupadas: Importancia SHAP (%) por variable
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ancho = 0.25
+    fig, ax = plt.subplots(figsize=(11, 6))
+    # El ancho se deriva del número de diseños: con 4 barras fijas de 0.25 se solapaban.
+    ancho = 0.8 / len(estrategias)
     x = np.arange(len(FEATURES))
-
-    colores = {
-        'ahp_filtrado': '#9A4A1E',     # Cobre Atacama
-        'fondo_aleatorio': '#2E6B4A',  # Verde
-        'fondo_objetivo': '#1B2430',   # Azul oscuro
-    }
+    colores = COLORES_ESTRATEGIA
 
     for i, est in enumerate(estrategias):
         res = resultados['estrategias'][est]
@@ -202,7 +257,7 @@ def _generar_figuras_sensibilidad(resultados: dict, figures_dir: str):
     ax.set_ylabel('Importancia SHAP (%)', fontsize=12, fontweight='bold')
     ax.set_title('Sensibilidad al Diseño de Pseudo-Ausencias: Estabilidad de Importancias SHAP',
                  fontsize=13, fontweight='bold', pad=14)
-    ax.set_xticks(x + ancho)
+    ax.set_xticks(x + ancho * (len(estrategias) - 1) / 2)
     ax.set_xticklabels(FEATURES, rotation=25, ha='right', fontsize=10)
     ax.legend(frameon=True, facecolor='#F8F9FA', edgecolor='#CDD3DA')
     ax.grid(axis='y', linestyle='--', alpha=0.4)
@@ -212,29 +267,32 @@ def _generar_figuras_sensibilidad(resultados: dict, figures_dir: str):
     plt.close()
 
     # 2. Distribución de variables clave en los pools de negativos
-    variables_clave = ['slope', 'ghi', 'elev', 'dist_transmision']
     nombres_vars = {'slope': 'Pendiente (°)', 'ghi': 'GHI (kWh/m²)',
                     'elev': 'Elevación (m.s.n.m.)', 'dist_transmision': 'Dist. Transmisión (m)'}
 
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     axes = axes.ravel()
 
-    for idx, var in enumerate(variables_clave):
+    for idx, var in enumerate(VARIABLES_BOXPLOT):
         ax_v = axes[idx]
-        datos_box = []
-        labels_box = []
+        datos_box, labels_box, ests_dibujadas = [], [], []
         for est in estrategias:
-            df_pool = resultados['estrategias'][est].get('pool_negativos_df')
-            if df_pool is not None and var in df_pool.columns:
-                datos_box.append(df_pool[var].dropna().values)
+            muestras = resultados['estrategias'][est].get('_muestras_para_boxplot', {})
+            serie = muestras.get(var)
+            if serie is not None and len(serie) > 0:
+                datos_box.append(serie)
                 labels_box.append(est.replace('_', '\n'))
+                # Se registra qué estrategia produjo cada caja: colorear con zip sobre la
+                # lista completa desalineaba los colores en cuanto una quedaba fuera.
+                ests_dibujadas.append(est)
         if datos_box:
             bp = ax_v.boxplot(datos_box, tick_labels=labels_box, patch_artist=True,
                               showfliers=False)
-            for patch, est in zip(bp['boxes'], estrategias):
+            for patch, est in zip(bp['boxes'], ests_dibujadas):
                 patch.set_facecolor(colores[est])
                 patch.set_alpha(0.7)
         ax_v.set_title(nombres_vars.get(var, var), fontsize=11, fontweight='bold')
+        ax_v.tick_params(axis='x', labelsize=7)
         ax_v.grid(axis='y', linestyle='--', alpha=0.3)
 
     plt.suptitle('Distribución de Covariables en los Pools de Pseudo-Ausencias',
@@ -249,12 +307,21 @@ def _generar_figuras_sensibilidad(resultados: dict, figures_dir: str):
 
 def analizar_sensibilidad_muestreo(
     config: dict,
-    directorio_raiz: str,
     out_json: str = None,
     figures_dir: str = None,
 ) -> dict:
-    """Ejecuta el análisis de sensibilidad completo para los 3 diseños de pseudo-ausencias."""
+    """Ejecuta el análisis de sensibilidad completo para los diseños de `ESTRATEGIAS`.
+
+    `config['paths']` debe venir ya resuelto a rutas absolutas (`src.utils._resolver_rutas`).
+    """
     from src.preprocessing import cargar_capas_vectoriales
+
+    # Los hiperparámetros se resuelven ANTES de cargar nada pesado: si falta el modelo
+    # entrenado, conviene abortar en el primer segundo y no tras leer las 8 capas vectoriales.
+    ruta_metricas = config['paths']['results'].get('model_rf', '')
+    ruta_metricas = os.path.join(os.path.dirname(ruta_metricas), 'model_rf_metrics.json')
+    params_rf, origen_params = cargar_hiperparametros_del_modelo(ruta_metricas)
+    print(f"Hiperparámetros del RF: {params_rf}  [origen: {origen_params}]")
 
     paths_raw = config['paths']['raw']
     processed = config['paths']['processed']
@@ -270,19 +337,11 @@ def analizar_sensibilidad_muestreo(
     criterios = config['criterios']
     tamano_bloque = config.get('validacion', {}).get('tamano_bloque_km', 30)
 
-    # Hiperparámetros base consistentes
-    params_rf = {
-        'n_estimators': ml.get('n_estimators', 500),
-        'max_depth': 8,
-        'min_samples_leaf': 3,
-        'class_weight': 'balanced',
-    }
-
     regiones_gdf = vectores['regiones'][
         vectores['regiones']['REGION'].isin(['Antofagasta', 'Atacama'])
     ]
 
-    estrategias = ['ahp_filtrado', 'fondo_aleatorio', 'fondo_objetivo']
+    estrategias = list(ESTRATEGIAS)
     resultados_estrategias = {}
 
     for est in estrategias:
@@ -299,42 +358,38 @@ def analizar_sensibilidad_muestreo(
         )
         resultados_estrategias[est] = res
 
-    # Comparación de rangos de importancia SHAP
-    # Extraer vectores de importancia (%) alineados con el orden canónico FEATURES
-    vec_ahp = [next(item['importancia_pct'] for item in resultados_estrategias['ahp_filtrado']['importancias_shap'] if item['feature'] == f) for f in FEATURES]
-    vec_aleat = [next(item['importancia_pct'] for item in resultados_estrategias['fondo_aleatorio']['importancias_shap'] if item['feature'] == f) for f in FEATURES]
-    vec_obj = [next(item['importancia_pct'] for item in resultados_estrategias['fondo_objetivo']['importancias_shap'] if item['feature'] == f) for f in FEATURES]
+    # Comparación de rangos de importancia SHAP, generalizada a todos los pares: así agregar
+    # o quitar un diseño no obliga a reescribir la comparación (antes estaba cableada a 3).
+    def _vector_importancias(est: str) -> list:
+        """Importancias (%) de un diseño, alineadas al orden canónico de FEATURES."""
+        pct = {item['feature']: item['importancia_pct']
+               for item in resultados_estrategias[est]['importancias_shap']}
+        return [pct[f] for f in FEATURES]
 
-    tau_ahp_aleat, p_tau_1 = kendalltau(vec_ahp, vec_aleat)
-    tau_ahp_obj, p_tau_2 = kendalltau(vec_ahp, vec_obj)
-    tau_aleat_obj, p_tau_3 = kendalltau(vec_aleat, vec_obj)
+    vectores_imp = {est: _vector_importancias(est) for est in estrategias}
 
-    rho_ahp_aleat, p_rho_1 = spearmanr(vec_ahp, vec_aleat)
-    rho_ahp_obj, p_rho_2 = spearmanr(vec_ahp, vec_obj)
-    rho_aleat_obj, p_rho_3 = spearmanr(vec_aleat, vec_obj)
+    # Cada estadístico va con su p-valor: son correlaciones de rango sobre solo 7 variables,
+    # donde un tau alto puede no ser distinguible del azar. Reportar el coeficiente solo sería
+    # el error que advierte la clase 15 (láms. 15 y 27).
+    kendall, spearman = {}, {}
+    for a, b in combinations(estrategias, 2):
+        clave = f"{a}_vs_{b}"
+        tau, p_tau = kendalltau(vectores_imp[a], vectores_imp[b])
+        rho, p_rho = spearmanr(vectores_imp[a], vectores_imp[b])
+        kendall[clave] = {'tau': round(float(tau), 4), 'p_valor': round(float(p_tau), 4)}
+        spearman[clave] = {'rho': round(float(rho), 4), 'p_valor': round(float(p_rho), 4)}
 
-    # Identificar variable número 1 en cada diseño
-    top1_ahp = resultados_estrategias['ahp_filtrado']['importancias_shap'][0]['feature']
-    top1_aleat = resultados_estrategias['fondo_aleatorio']['importancias_shap'][0]['feature']
-    top1_obj = resultados_estrategias['fondo_objetivo']['importancias_shap'][0]['feature']
+    dominantes = {est: resultados_estrategias[est]['importancias_shap'][0]['feature']
+                  for est in estrategias}
 
     resumen_comparativo = {
         'variable_dominante': {
-            'ahp_filtrado': top1_ahp,
-            'fondo_aleatorio': top1_aleat,
-            'fondo_objetivo': top1_obj,
-            'es_invariante': bool(top1_ahp == top1_aleat == top1_obj),
+            **dominantes,
+            'es_invariante': bool(len(set(dominantes.values())) == 1),
         },
-        'correlacion_kendall_tau': {
-            'ahp_vs_aleatorio': round(float(tau_ahp_aleat), 4),
-            'ahp_vs_objetivo': round(float(tau_ahp_obj), 4),
-            'aleatorio_vs_objetivo': round(float(tau_aleat_obj), 4),
-        },
-        'correlacion_spearman_rho': {
-            'ahp_vs_aleatorio': round(float(rho_ahp_aleat), 4),
-            'ahp_vs_objetivo': round(float(rho_ahp_obj), 4),
-            'aleatorio_vs_objetivo': round(float(rho_aleat_obj), 4),
-        },
+        'correlacion_kendall_tau': kendall,
+        'correlacion_spearman_rho': spearman,
+        'n_variables_correlacionadas': len(FEATURES),
         'comparacion_macro_familias': {
             est: resultados_estrategias[est]['importancia_macro_familias']
             for est in estrategias
@@ -342,6 +397,10 @@ def analizar_sensibilidad_muestreo(
     }
 
     resultado_final = {
+        # Queda registrado con qué bosque se comparó: sin esto no se puede afirmar que la
+        # conclusión aplique al modelo del informe.
+        'hiperparametros_rf': dict(params_rf),
+        'origen_hiperparametros': origen_params,
         'resumen_comparativo': resumen_comparativo,
         'estrategias': resultados_estrategias,
     }
@@ -353,8 +412,7 @@ def analizar_sensibilidad_muestreo(
 
     # Limpiar DataFrames internos antes de serializar a JSON
     for est in estrategias:
-        if 'pool_negativos_df' in resultado_final['estrategias'][est]:
-            del resultado_final['estrategias'][est]['pool_negativos_df']
+        resultado_final['estrategias'][est].pop('_muestras_para_boxplot', None)
 
     if out_json:
         os.makedirs(os.path.dirname(out_json) or '.', exist_ok=True)
