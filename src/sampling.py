@@ -5,6 +5,11 @@ from shapely.geometry import Point
 import rasterio
 from rasterio.windows import Window
 
+# Radio en torno a subestaciones y almacenamiento dentro del cual se extraen las
+# pseudo-ausencias de la estrategia 'grupo_objetivo'. 20 km es el mismo orden que
+# `criterios.dist_max` del config: define "el entorno donde el sector ya prospectó".
+TGB_RADIO_M = 20000.0
+
 
 def _sample_raster_value(src, x, y):
     """Extrae valor de raster en (x, y) con fallback a ventana 3x3 si hay nodata."""
@@ -60,12 +65,26 @@ def generar_dataset_muestras(
 
     Estrategias de negativos soportadas (`estrategia_negativos`):
       - 'ahp_filtrado': buffer 5 km + exclusiones territoriales + filtros técnicos AHP
-        (GHI >= min, slope <= max, elev <= max, dist_trans <= max).
+        (GHI >= min, slope <= max, elev <= max, dist_trans <= max). Es la línea base.
       - 'fondo_aleatorio': buffer 5 km + exclusiones territoriales (sin filtros técnicos AHP).
-      - 'fondo_objetivo': buffer 5 km + exclusiones territoriales + condicionado a proximidad
-        de red (dist_trans <= max) pero sin filtros geofísicos (GHI, pendiente, cota).
+      - 'sin_filtros_geofisicos': como la línea base pero conservando SOLO el criterio de
+        distancia a transmisión. Es una ablación anidada de 'ahp_filtrado', no un diseño
+        independiente: sirve para aislar cuánto aporta el filtro geofísico.
+      - 'grupo_objetivo': target-group background (Phillips et al. 2009). Los candidatos se
+        generan en torno a subestaciones y almacenamiento —donde el sector ya prospectó— en
+        vez de uniformemente sobre la región. Replica el sesgo de muestreo de las positivas.
+
+    'fondo_objetivo' se acepta como alias en desuso de 'sin_filtros_geofisicos': era el nombre
+    original, pero describía mal lo que hacía (no era un fondo de grupo objetivo).
     """
-    estrategias_validas = ('ahp_filtrado', 'fondo_aleatorio', 'fondo_objetivo')
+    ALIAS_EN_DESUSO = {'fondo_objetivo': 'sin_filtros_geofisicos'}
+    if estrategia_negativos in ALIAS_EN_DESUSO:
+        nuevo = ALIAS_EN_DESUSO[estrategia_negativos]
+        print(f"  [AVISO] '{estrategia_negativos}' quedó en desuso; se usa '{nuevo}'.")
+        estrategia_negativos = nuevo
+
+    estrategias_validas = ('ahp_filtrado', 'fondo_aleatorio',
+                           'sin_filtros_geofisicos', 'grupo_objetivo')
     if estrategia_negativos not in estrategias_validas:
         raise ValueError(
             f"Estrategia de negativos no reconocida: '{estrategia_negativos}'. "
@@ -152,7 +171,35 @@ def generar_dataset_muestras(
     # Los candidatos se generan en toda la región de estudio (sin restringir a un buffer
     # alrededor de las líneas: ese filtro introducía sesgo y quedó descartado). El criterio
     # de distancia máxima a transmisión se aplica más abajo, en el filtro AHP.
-    print("  Generando candidatos aleatorios dentro de las regiones de estudio...")
+    #
+    # Excepción: 'grupo_objetivo' NO muestrea uniformemente. Es un target-group background
+    # (Phillips et al. 2009): las pseudo-ausencias se extraen de donde el propio sector
+    # energético ya invirtió —subestaciones y almacenamiento—, de modo que arrastren el mismo
+    # sesgo de prospección que las plantas existentes. Así el contraste positivas/negativas
+    # deja de premiar "estar cerca de la red" (que es dónde se miró) y aísla qué distingue a
+    # un sitio construido de otro igualmente accesible pero descartado.
+    dominio_tgb = None
+    if estrategia_negativos == 'grupo_objetivo':
+        capas_tgb = []
+        for clave in ('subestaciones', 'almacenamiento'):
+            capa = vectores.get(clave)
+            if capa is not None and len(capa) > 0:
+                capas_tgb.append(capa.to_crs(epsg=32719).geometry)
+        if capas_tgb:
+            geoms_tgb = pd.concat(capas_tgb, ignore_index=True)
+            dominio_tgb = geoms_tgb.buffer(TGB_RADIO_M).union_all().intersection(
+                regiones_norte.geometry.union_all())
+        if dominio_tgb is None or dominio_tgb.is_empty:
+            raise ValueError(
+                "La estrategia 'grupo_objetivo' requiere las capas de subestaciones o "
+                "almacenamiento dentro de la zona de estudio, y no hay ninguna disponible."
+            )
+        bounds = dominio_tgb.bounds
+        print(f"  Generando candidatos de grupo objetivo (radio {TGB_RADIO_M/1000:.0f} km "
+              "en torno a subestaciones y almacenamiento)...")
+    else:
+        print("  Generando candidatos aleatorios dentro de las regiones de estudio...")
+
     intentos = 0
     while len(puntos_random) < n_neg_deseados * 6 and intentos < n_neg_deseados * 150:
         intentos += 1
@@ -160,7 +207,10 @@ def generar_dataset_muestras(
         y = rng.uniform(bounds[1], bounds[3])
         pto = Point(x, y)
 
-        if regiones_norte.contains(pto).any():
+        if dominio_tgb is not None:
+            if dominio_tgb.contains(pto):
+                puntos_random.append(pto)
+        elif regiones_norte.contains(pto).any():
             puntos_random.append(pto)
 
     candidatos_neg = gpd.GeoDataFrame(geometry=puntos_random, crs='EPSG:32719')
@@ -295,19 +345,20 @@ def generar_dataset_muestras(
         # Fondo regional no filtrado: sin filtros técnicos AHP
         pool_negativos = negativos_pre.copy()
 
-    elif estrategia_negativos == 'fondo_objetivo':
-        # Fondo de grupo objetivo: condicionado a accesibilidad a infraestructura (dist_transmision <= dist_max)
-        # pero SIN filtros de pendiente, elevación ni GHI
+    elif estrategia_negativos == 'sin_filtros_geofisicos':
+        # Ablación de la línea base: conserva solo la accesibilidad a red (dist_transmision
+        # <= dist_max) y suelta pendiente, elevación y GHI.
         if len(lineas_norte) > 0:
             filtro = (negativos_pre['dist_transmision'] <= criterios.get('dist_max', 20000))
             pool_negativos = negativos_pre[filtro].copy()
         else:
             pool_negativos = negativos_pre.copy()
-    else:
-        raise ValueError(
-            f"Estrategia de negativos no reconocida: '{estrategia_negativos}'. "
-            "Opciones válidas: 'ahp_filtrado', 'fondo_aleatorio', 'fondo_objetivo'."
-        )
+
+    else:  # 'grupo_objetivo'
+        # El sesgo ya se impuso al GENERAR los candidatos (en torno a la infraestructura
+        # existente): filtrarlos otra vez por cercanía a red sería aplicar el mismo criterio
+        # dos veces y vaciaría el contraste que este diseño busca medir.
+        pool_negativos = negativos_pre.copy()
 
     # Crear pool de negativos finales con clase 0
     pool_negativos['clase'] = 0
