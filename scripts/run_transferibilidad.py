@@ -33,6 +33,7 @@ from src.explainability_spatial import zona_de_config
 from src.transferibilidad import (
     evaluar_zona, escribir_mapa_aptitud,
     cargar_muestras_entrenamiento, diagnostico_covariate_shift,
+    diagnostico_aoa,
 )
 
 
@@ -83,6 +84,17 @@ def main():
     muestras = cargar_muestras_entrenamiento(config, directorio_raiz)
     shift = diagnostico_covariate_shift(muestras, X)
 
+    print("  Calculando Área de Aplicabilidad")
+    res_aoa = diagnostico_aoa(
+        muestras_tr=muestras,
+        modelo=modelo,
+        X_zona=X,
+        valido=extras['valido'],
+        extras=extras,
+        dir_salida=dir_res,
+        plantas_rc=extras.get('plantas_rc'),
+    )
+
     salida = {
         'zona': args.zona,
         'regiones': zona['regiones'],
@@ -91,6 +103,7 @@ def main():
         'supuesto_huella_ha_por_mw': ha_por_mw,
         'metricas': res,
         'covariate_shift': shift,
+        'aoa': res_aoa,
         'mapa_aptitud': os.path.relpath(ruta_mapa, directorio_raiz),
         'nota_lectura': (
             "El techo de precisión depende de la razón huella/área propuesta, que es propia "
@@ -99,8 +112,8 @@ def main():
         ),
         'nota_extrapolacion': (
             "Un Random Forest no extrapola: fuera del rango de entrenamiento devuelve el "
-            "valor de la hoja más cercana. Leer 'covariate_shift.pct_fuera_de_rango' antes "
-            "de atribuir cualquier caída a la geografía."
+            "valor de la hoja más cercana. Leer 'covariate_shift.pct_fuera_de_rango' y 'aoa' "
+            "antes de atribuir cualquier caída a la geografía."
         ),
     }
 
@@ -133,6 +146,15 @@ def main():
         print(f"  {k:>5} {v['recall']:>8.4f} {pa.get('precision', float('nan')):>10.4f}"
               f" {pa.get('precision_techo_modelo_perfecto', float('nan')):>8.4f}"
               f" {pa.get('pct_del_techo_alcanzado', float('nan')):>8.1f}%")
+
+    print("\n  Área de Aplicabilidad:")
+    print(f"    Umbral DI entrenamiento : {res_aoa['umbral_aoa_entrenamiento']:.4f}")
+    print(f"    Píxeles dentro de AOA   : {res_aoa['pct_dentro_aoa']:>6.2f}% ({res_aoa['n_pixeles_dentro_aoa']:,} px)")
+    print(f"    Píxeles fuera de AOA    : {res_aoa['pct_fuera_aoa']:>6.2f}% ({res_aoa['n_pixeles_fuera_aoa']:,} px — extrapolación)")
+    if res_aoa.get('plantas_en_aoa'):
+        pl = res_aoa['plantas_en_aoa']
+        print(f"    Plantas dentro de AOA   : {pl['pct_plantas_dentro_aoa']:>6.2f}% ({pl['n_plantas_dentro_aoa']}/{pl['n_plantas_evaluadas']})")
+    print(f"    DI en la zona (mediana) : {res_aoa['estadisticas_di_zona']['mediana']:.4f} (máx: {res_aoa['estadisticas_di_zona']['max']:.4f})")
 
     print("\n  Desplazamiento de covariables (% de píxeles fuera del rango de entrenamiento):")
     for f_, d in sorted(shift.items(), key=lambda kv: -kv[1]['pct_fuera_de_rango']):

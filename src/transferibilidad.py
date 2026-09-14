@@ -88,6 +88,36 @@ def diagnostico_covariate_shift(muestras, X_zona):
     return salida
 
 
+def diagnostico_aoa(muestras_tr, modelo, X_zona, valido, extras, dir_salida=None, plantas_rc=None):
+    """Calcula el Área de Aplicabilidad (AOA) e Índice de Disimilitud (DI).
+
+    Pondera el espacio de covariables por la importancia de variables del modelo RF y evalúa
+    qué fracción de la zona nueva cae dentro del dominio de extrapolación fiable.
+    """
+    from src.aoa import extraer_pesos_modelo, ajustar_espacio_aoa, evaluar_aoa_zona
+
+    pesos = extraer_pesos_modelo(modelo, FEATURES)
+    X_train = muestras_tr[FEATURES].dropna().values
+    grupos_cv = muestras_tr['block_id'].values if 'block_id' in muestras_tr.columns else None
+
+    ajuste = ajustar_espacio_aoa(X_train, pesos, grupos_cv=grupos_cv)
+    base_meta = {
+        'crs': extras['crs'],
+        'transform': extras['transform'],
+        'width': extras['shape'][1],
+        'height': extras['shape'][0],
+    }
+
+    return evaluar_aoa_zona(
+        ajuste_aoa=ajuste,
+        X_zona=X_zona,
+        valido=valido,
+        base_meta=base_meta,
+        dir_salida=dir_salida,
+        plantas_rc=plantas_rc,
+    )
+
+
 def evaluar_zona(config, directorio_raiz, modelo, zona, resolucion_m,
                  ks=KS_DEFECTO, ha_por_mw=None):
     """Puntúa `modelo` sobre la grilla de `zona` y calcula las métricas top-K allí.
@@ -128,7 +158,7 @@ def evaluar_zona(config, directorio_raiz, modelo, zona, resolucion_m,
     res['area_zona_km2'] = round(float(valido.sum()) * area_px_m2 / 1e6, 1)
 
     extras = {'crs': crs, 'transform': transform, 'shape': grid_shape,
-              'valido': valido, 'prob': prob}
+              'valido': valido, 'prob': prob, 'plantas_rc': plantas_rc}
     return res, X, extras
 
 
