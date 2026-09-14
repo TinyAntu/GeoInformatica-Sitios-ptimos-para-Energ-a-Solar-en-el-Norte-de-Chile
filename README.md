@@ -66,6 +66,7 @@ lo anterior.
 | **Correr una sola fase** | `python scripts/run_pipeline.py --solo-fase 4` | Ejecuta únicamente esa fase |
 | **Preprocesamiento (fase 1)** | `python scripts/run_preprocesamiento.py --config config.yaml` | DEM, slope/aspect y reproyección del GHI a EPSG:32719 |
 | **Entrenamiento (etapa 3)** | `python scripts/run_entrenamiento.py --config config.yaml` | Muestreo espacial y Random Forest con Optuna |
+| **Sensibilidad a pseudo-ausencias** | `python scripts/run_sensibilidad_muestreo.py --config config.yaml` | Contrasta 4 diseños de negativos y mide si la jerarquía SHAP se mantiene |
 | **Rendimiento Fijo (23°)** | `python scripts/run_solar_yield.py --mount tilt [--tilt 23]` | Genera mapa de rendimiento fijo a inclinación óptima por latitud (`~23°`) |
 | **Rendimiento Plano (0°)** | `python scripts/run_solar_yield.py --mount tilt --tilt 0` | Genera mapa de rendimiento fijo en superficie horizontal (`tilt = 0°`) |
 | **Rendimiento Seguidor** | `python scripts/run_solar_yield.py --mount tracker` | Genera mapa de rendimiento para seguidor de un eje (`gcr = 0.3`) |
