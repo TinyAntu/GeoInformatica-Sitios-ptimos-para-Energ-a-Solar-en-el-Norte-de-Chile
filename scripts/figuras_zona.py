@@ -72,6 +72,12 @@ def main():
         ('aptitud_agresivo.tif',
          f'Aptitud fotovoltaica en {etiqueta_zona} — WLC/AHP, perfil agresivo',
          'Índice de aptitud WLC (0–1)', 'mapa_aptitud_agresivo.png', 'viridis'),
+        ('di.tif',
+         f'Índice de Disimilitud (DI) en {etiqueta_zona} — Meyer & Pebesma (2021)',
+         'Índice de Disimilitud (DI)', 'mapa_di.png', 'magma'),
+        ('aoa.tif',
+         f'Área de Aplicabilidad (AOA) en {etiqueta_zona} — Meyer & Pebesma (2021)',
+         'AOA (1 = aplicable / fiable, 0 = extrapolación)', 'mapa_aoa.png', 'viridis'),
     ]
     for tif, titulo, etiqueta, png, cmap in mapas:
         ruta = os.path.join(results_dir, tif)
@@ -79,9 +85,11 @@ def main():
             print(f"  [AVISO] No existe {ruta}; se omite.")
             continue
         # Los perfiles AHP no llevan la nota del modelo: no dependen del RF entrenado.
-        nota = nota_modelo if tif.startswith('mapa_probabilidad') else None
+        nota = nota_modelo if (tif.startswith('mapa_probabilidad') or tif in ('di.tif', 'aoa.tif')) else None
+        vmax_val = None if tif == 'di.tif' else 1.0
+        vmin_val = 0.0
         renderizar_mapa(ruta, titulo, etiqueta, os.path.join(figures_dir, png), regiones,
-                        cmap=cmap, vmin=0.0, vmax=1.0, nota_extra=nota,
+                        cmap=cmap, vmin=vmin_val, vmax=vmax_val, nota_extra=nota,
                         recortar_a_regiones=True)
 
     # --- Rendimiento físico (motor solarpv-rs) ---
