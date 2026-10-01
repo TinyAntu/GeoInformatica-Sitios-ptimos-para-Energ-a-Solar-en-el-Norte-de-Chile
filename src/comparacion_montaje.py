@@ -15,10 +15,18 @@ import json
 
 import numpy as np
 import pandas as pd
-import rasterio
+try:
+    import rasterio
+except (ImportError, Exception):
+    rasterio = None
+
+try:
+    import tifffile
+except (ImportError, Exception):
+    tifffile = None
 
 # Reutilizamos utilidades del cruce (T2): alineado a la grilla de aptitud y resumen.
-from src.cruce_aptitud_rendimiento import _alinear_rendimiento, _resumen, NODATA
+from src.cruce_aptitud_rendimiento import _alinear_rendimiento, _resumen, _obtener_geotags, NODATA
 
 
 def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bloque_km=15, fijo_tilt0_path=None):
@@ -26,22 +34,27 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
 
     Devuelve el dict de estadísticas. Todos los rasters de rendimiento se alinean a la grilla
     del mapa de aptitud (EPSG:32719) antes de comparar, celda a celda.
-
-    `tamano_bloque_km` (mismo valor que `validacion.tamano_bloque_km`, usado por el SBCV del
-    RF) agrega la ganancia por bloque espacial antes de resumir entre bloques: los píxeles de
-    "zonas aptas" no son observaciones independientes (pixeles vecinos comparten casi la misma
-    pendiente/orientación/sombreado), así que tratar cada píxel como una muestra independiente
-    sobreestima el tamaño de muestra efectivo (el mismo problema de autocorrelación espacial
-    que motiva el Spatial Block CV, ver src/spatial_validation.py — Roberts et al. 2017;
-    Ploton et al. 2020). El resumen por celda se conserva por continuidad, pero el por bloque
-    es el que debería citarse si se reporta un rango/dispersión de la ganancia.
     """
-    with rasterio.open(aptitud_path) as apt:
-        aptitud = apt.read(1).astype(np.float32)
-        transform = apt.transform
-        fijo = _alinear_rendimiento(fijo_path, apt)
-        seguidor = _alinear_rendimiento(seguidor_path, apt)
-        fijo_tilt0 = _alinear_rendimiento(fijo_tilt0_path, apt) if fijo_tilt0_path else None
+    if rasterio is not None:
+        try:
+            with rasterio.open(aptitud_path) as apt:
+                aptitud = apt.read(1).astype(np.float32)
+                transform = apt.transform
+                fijo = _alinear_rendimiento(fijo_path, apt)
+                seguidor = _alinear_rendimiento(seguidor_path, apt)
+                fijo_tilt0 = _alinear_rendimiento(fijo_tilt0_path, apt) if fijo_tilt0_path else None
+        except Exception:
+            aptitud = tifffile.imread(aptitud_path).astype(np.float32)
+            transform = None
+            fijo = _alinear_rendimiento(fijo_path, aptitud_path)
+            seguidor = _alinear_rendimiento(seguidor_path, aptitud_path)
+            fijo_tilt0 = _alinear_rendimiento(fijo_tilt0_path, aptitud_path) if fijo_tilt0_path else None
+    else:
+        aptitud = tifffile.imread(aptitud_path).astype(np.float32)
+        transform = None
+        fijo = _alinear_rendimiento(fijo_path, aptitud_path)
+        seguidor = _alinear_rendimiento(seguidor_path, aptitud_path)
+        fijo_tilt0 = _alinear_rendimiento(fijo_tilt0_path, aptitud_path) if fijo_tilt0_path else None
 
     base_valida = (
         (aptitud != NODATA) & np.isfinite(aptitud)
@@ -59,18 +72,23 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
     fijo_tilt0_aptas = fijo_tilt0[aptas] if fijo_tilt0 is not None else None
 
     # Ganancia agregada (medias) y ganancia por celda (más honesta ante distribuciones sesgadas).
-    # OJO: "por celda" trata cada píxel como independiente (ver docstring) — se mantiene como
-    # referencia histórica, no como la cifra de dispersión más defendible.
     ganancia_media_pct = float(100.0 * (seg_aptas.mean() / fijo_aptas.mean() - 1))
     with np.errstate(divide="ignore", invalid="ignore"):
         gain_por_celda = np.where(fijo_aptas > 0, seg_aptas / fijo_aptas - 1.0, np.nan)
     gain_finito = gain_por_celda[np.isfinite(gain_por_celda)]
     ganancia_mediana_celda_pct = float(100.0 * np.median(gain_finito))
 
-    # --- Agregación por bloque espacial: promedia dentro de cada bloque primero, y solo
-    # después resume entre bloques. `n_bloques` es el tamaño de muestra efectivo honesto. ---
-    rows, cols = np.where(aptas)  # mismo orden row-major que fijo[aptas]/seguidor[aptas]
-    xs, ys = rasterio.transform.xy(transform, rows, cols)
+    # --- Agregación por bloque espacial ---
+    rows, cols = np.where(aptas)
+    if transform is not None and rasterio is not None:
+        xs, ys = rasterio.transform.xy(transform, rows, cols)
+    else:
+        scale_apt, tie_apt, _ = _obtener_geotags(aptitud_path)
+        x0_apt, y0_apt = tie_apt[3], tie_apt[4]
+        res_x, res_y = scale_apt[0], scale_apt[1]
+        xs = x0_apt + cols * res_x + res_x / 2.0
+        ys = y0_apt - rows * res_y - res_y / 2.0
+
     bloque_m = tamano_bloque_km * 1000.0
     bx = np.floor(np.asarray(xs) / bloque_m).astype(np.int64)
     by = np.floor(np.asarray(ys) / bloque_m).astype(np.int64)

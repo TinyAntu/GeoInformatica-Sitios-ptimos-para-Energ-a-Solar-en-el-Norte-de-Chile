@@ -29,12 +29,16 @@ class SalidaMotorInvalidaError(RuntimeError):
 def _resolver_binario(binario: str) -> str:
     """Devuelve la ruta absoluta al ejecutable del motor o lanza un error accionable.
 
-    Acepta tanto una ruta a un archivo (p. ej. 'solarpv-rs/target/release/solarpv-cli')
-    como un comando en el PATH (p. ej. 'solarpv-cli').
+    Acepta tanto una ruta a un archivo (p. ej. 'solarpv-rs/target/release/solarpv')
+    como un comando en el PATH (p. ej. 'solarpv').
     """
-    # Caso 1: ruta directa a un archivo ejecutable existente.
-    if os.path.isfile(binario) and os.access(binario, os.X_OK):
-        return os.path.abspath(binario)
+    candidatos = [binario]
+    if os.name == 'nt' and not binario.lower().endswith('.exe'):
+        candidatos.append(binario + '.exe')
+
+    for cand in candidatos:
+        if os.path.isfile(cand):
+            return os.path.abspath(cand)
 
     # Caso 2: comando disponible en el PATH.
     encontrado = shutil.which(binario)
@@ -45,9 +49,9 @@ def _resolver_binario(binario: str) -> str:
         f"No se encontró el binario del motor solarpv-rs en '{binario}'.\n"
         "Compílalo con:\n"
         "    git clone https://github.com/franciscoparrao/solarpv-rs.git\n"
-        "    cd solarpv-rs && cargo build --release -p solarpv-cli --features terrain\n"
+        "    cd solarpv-rs && cargo build --release -p solarpv-cli\n"
         "y ajusta 'solarpv.binario' en config.yaml a la ruta del ejecutable "
-        "(por defecto solarpv-rs/target/release/solarpv-cli)."
+        "(por defecto solarpv-rs/target/release/solarpv)."
     )
 
 
@@ -64,8 +68,13 @@ def construir_comando(
     gcr=None,
     per_cell_lat: bool = True,
     svf: bool = True,
+    tile: int = None,
+    horizon_radius: int = None,
+    ghi: str = None,
+    ghi_monthly: str = None,
+    ghi_unit: str = "kwh",
 ) -> list:
-    """Arma la lista de argumentos para `solarpv-cli` (montaje fijo o seguidor).
+    """Arma la lista de argumentos para `solarpv` (montaje fijo o seguidor).
 
     Se separa de la ejecución para poder testearla sin correr el binario real y para
     poder imprimirla en modo --dry-run. Los flags de terreno `--per-cell-lat` y `--svf`
@@ -85,6 +94,19 @@ def construir_comando(
         cmd.append("--per-cell-lat")
     if svf:
         cmd.append("--svf")
+    if tile is not None and int(tile) > 0:
+        cmd += ["--tile", str(tile)]
+    if horizon_radius is not None:
+        cmd += ["--horizon-radius", str(horizon_radius)]
+
+    if ghi_monthly:
+        cmd += ["--ghi-monthly", ghi_monthly]
+        if ghi_unit:
+            cmd += ["--ghi-unit", ghi_unit]
+    elif ghi:
+        cmd += ["--ghi", ghi]
+        if ghi_unit:
+            cmd += ["--ghi-unit", ghi_unit]
 
     if mount == "tilt":
         cmd += ["--mount", "tilt"]
@@ -203,19 +225,24 @@ def generar_mapa_rendimiento(
     lat: float,
     lon: float,
     date: str,
-    binario: str = "solarpv-rs/target/release/solarpv-cli",
+    binario: str = "solarpv-rs/target/release/solarpv",
     mount: str = "tilt",
     tilt=None,
     surface_azimuth=None,
     gcr=None,
     per_cell_lat: bool = True,
     svf: bool = True,
+    tile: int = None,
+    horizon_radius: int = None,
+    ghi: str = None,
+    ghi_monthly: str = None,
+    ghi_unit: str = "kwh",
     target_srid: int = 32719,
     bounds_utm: dict = None,
     resolucion_m: float = None,
     dry_run: bool = False,
 ) -> str:
-    """Corre `solarpv-cli` sobre `dem_path` y devuelve la ruta al `*_specific_yield.tif`.
+    """Corre `solarpv` sobre `dem_path` y devuelve la ruta al `*_specific_yield.tif`.
 
     Escribe `{out_prefix}_{poa,ac,specific_yield}.tif`; nos interesa el specific_yield
     (kWh/kWp/año por celda). En modo `dry_run` solo imprime el comando y no ejecuta nada
@@ -238,7 +265,8 @@ def generar_mapa_rendimiento(
         cmd = construir_comando(
             binario, dem_path, out_prefix, lat, lon, date,
             mount=mount, tilt=tilt, surface_azimuth=surface_azimuth, gcr=gcr,
-            per_cell_lat=per_cell_lat, svf=svf,
+            per_cell_lat=per_cell_lat, svf=svf, tile=tile, horizon_radius=horizon_radius,
+            ghi=ghi, ghi_monthly=ghi_monthly, ghi_unit=ghi_unit,
         )
         if resolucion_m:
             print(f"[dry-run] (se remuestrearía el DEM a {resolucion_m:.0f} m antes de correr)")
@@ -252,14 +280,15 @@ def generar_mapa_rendimiento(
     cmd = construir_comando(
         binario_abs, dem_efectivo, out_prefix, lat, lon, date,
         mount=mount, tilt=tilt, surface_azimuth=surface_azimuth, gcr=gcr,
-        per_cell_lat=per_cell_lat, svf=svf,
+        per_cell_lat=per_cell_lat, svf=svf, tile=tile, horizon_radius=horizon_radius,
+        ghi=ghi, ghi_monthly=ghi_monthly, ghi_unit=ghi_unit,
     )
 
-    print(f"Ejecutando solarpv-cli (montaje '{mount}')...\n    " + " ".join(cmd))
+    print(f"Ejecutando solarpv (montaje '{mount}')...\n    " + " ".join(cmd))
     resultado = subprocess.run(cmd, capture_output=True, text=True)
     if resultado.returncode != 0:
         raise RuntimeError(
-            f"El motor solarpv-cli falló (código {resultado.returncode}).\n"
+            f"El motor solarpv falló (código {resultado.returncode}).\n"
             f"--- stdout ---\n{resultado.stdout}\n--- stderr ---\n{resultado.stderr}"
         )
 

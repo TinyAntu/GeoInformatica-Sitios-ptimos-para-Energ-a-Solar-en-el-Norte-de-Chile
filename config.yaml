@@ -55,7 +55,7 @@ postgis_validation:
     max_lat: -17.0
 
 # Integración con el motor Rust solarpv-rs (mapa de rendimiento kWh/kWp/año).
-# El binario se compila aparte: cargo build --release -p solarpv-cli --features terrain
+# El binario se compila aparte: cargo build --release -p solarpv-cli
 # La validación de CRS/extensión reutiliza postgis_validation.target_srid y bounds_utm.
 solarpv:
   binario: "solarpv-rs/target/release/solarpv"  # ejecutable compilado ([[bin]] name = "solarpv")
@@ -64,11 +64,12 @@ solarpv:
   date: "2026-01-01"  # fecha base para la simulación anual
   dem: "data/processed/dem_norte_32719.tif"  # DEM de entrada (mismo del pipeline)
   out_prefix: "data/results/rendimiento"     # salida: data/results/rendimiento_specific_yield.tif
-  # Remuestreo del DEM antes de correr el motor (controla runtime/memoria).
-  # El motor corre ~25k celdas/s: el DEM nativo (~90 m, 86 M celdas) tarda ~1 h.
-  #   300  -> ~7.7 M celdas, ~5 min. Recomendado para demo/iteración.
-  #   null -> resolución nativa del DEM (~90 m): máxima fidelidad de terreno, ~1 h.
-  resolucion_m: 300
+  # Procesamiento por teselas (solarpv-rs v0.4.0):
+  # Con --tile el pico de memoria lo fija una tesela, permitiendo correr a resolución nativa (~90 m) sin saturar RAM.
+  tile: 1024
+  # Remuestreo del DEM antes de correr el motor (null = resolución nativa del DEM con teselas si se quiere acelerar poner en 300).
+  resolucion_m: null
+  horizon_radius: 100
   montaje:
     tilt: 23            # inclinación (grados) para montaje fijo
     surface_azimuth: 0  # azimut de la superficie (0 = mirando al norte en HS)

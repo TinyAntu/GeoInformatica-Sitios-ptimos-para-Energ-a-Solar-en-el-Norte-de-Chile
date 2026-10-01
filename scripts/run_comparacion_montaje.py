@@ -49,6 +49,11 @@ def _asegurar_rendimiento(cfg, target_srid, bounds_utm, mount, sufijo, regenerar
         tilt=tilt_efectivo,
         surface_azimuth=montaje.get('surface_azimuth'),
         gcr=montaje.get('gcr'),
+        tile=cfg.get('tile'),
+        horizon_radius=cfg.get('horizon_radius'),
+        ghi=_ruta_abs(cfg['ghi']) if cfg.get('ghi') else None,
+        ghi_monthly=_ruta_abs(cfg['ghi_monthly']) if cfg.get('ghi_monthly') else None,
+        ghi_unit=cfg.get('ghi_unit', 'kwh'),
         target_srid=target_srid, bounds_utm=bounds_utm,
         resolucion_m=cfg.get('resolucion_m'),
     )
