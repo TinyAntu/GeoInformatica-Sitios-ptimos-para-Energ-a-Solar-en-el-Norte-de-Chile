@@ -26,47 +26,105 @@ import os
 import json
 
 import numpy as np
-import rasterio
-from rasterio.warp import reproject, Resampling
+try:
+    import rasterio
+    from rasterio.warp import reproject, Resampling
+except (ImportError, Exception):
+    rasterio = None
+    reproject = None
+    Resampling = None
+
+try:
+    import tifffile
+except (ImportError, Exception):
+    tifffile = None
+
+import scipy.ndimage
 from scipy.stats import spearmanr
 
 NODATA = -9999.0
 
 
-def _alinear_rendimiento(rendimiento_path, base):
-    """Reproyecta el rendimiento a la grilla del mapa de aptitud (bilinear).
+def _obtener_geotags(path):
+    """Extrae ModelPixelScale y ModelTiepoint de un GeoTIFF con tifffile."""
+    if tifffile is None:
+        return None, None, []
+    try:
+        with tifffile.TiffFile(path) as tif:
+            page = tif.pages[0]
+            tags = []
+            for code in (33550, 33922, 34735, 34736, 34737):
+                t = page.tags.get(code)
+                if t is not None:
+                    tags.append((t.code, t.dtype, len(t.value) if isinstance(t.value, (tuple, list)) else 1, t.value, True))
+            scale = page.tags.get(33550).value if 33550 in page.tags else (100.0, 100.0, 0.0)
+            tiepoint = page.tags.get(33922).value if 33922 in page.tags else (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            return scale, tiepoint, tags
+    except Exception:
+        return None, None, []
 
-    `base` es el dataset de aptitud abierto (define CRS, transform, shape de salida).
-    Devuelve un array float32 con NaN donde no hay dato.
-    """
-    destino = np.full((base.height, base.width), np.nan, dtype=np.float32)
-    with rasterio.open(rendimiento_path) as ren:
-        src_crs = ren.crs
-        if not src_crs or not getattr(src_crs, 'is_projected', False):
-            src_crs = base.crs
-        reproject(
-            source=rasterio.band(ren, 1),
-            destination=destino,
-            src_transform=ren.transform, src_crs=src_crs, src_nodata=ren.nodata,
-            dst_transform=base.transform, dst_crs=base.crs,
-            resampling=Resampling.bilinear,
-            dst_nodata=np.nan,
-        )
-    return destino
+
+def _alinear_rendimiento(rendimiento_path, aptitud_path_o_dataset):
+    """Reproyecta el rendimiento a la grilla del mapa de aptitud (bilinear)."""
+    if rasterio is not None and hasattr(aptitud_path_o_dataset, 'read'):
+        base = aptitud_path_o_dataset
+        destino = np.full((base.height, base.width), np.nan, dtype=np.float32)
+        with rasterio.open(rendimiento_path) as ren:
+            src_crs = ren.crs
+            if not src_crs or not getattr(src_crs, 'is_projected', False):
+                src_crs = base.crs
+            reproject(
+                source=rasterio.band(ren, 1),
+                destination=destino,
+                src_transform=ren.transform, src_crs=src_crs, src_nodata=ren.nodata,
+                dst_transform=base.transform, dst_crs=base.crs,
+                resampling=Resampling.bilinear,
+                dst_nodata=np.nan,
+            )
+        return destino
+
+    # Fallback con tifffile y scipy.ndimage si rasterio no está disponible
+    apt_path = aptitud_path_o_dataset if isinstance(aptitud_path_o_dataset, str) else getattr(aptitud_path_o_dataset, 'name', '')
+    with tifffile.TiffFile(apt_path) as ta:
+        apt_shape = ta.pages[0].shape
+    with tifffile.TiffFile(rendimiento_path) as tr:
+        ren = tr.asarray().astype(np.float32)
+
+    scale_apt, tie_apt, _ = _obtener_geotags(apt_path)
+    scale_ren, tie_ren, _ = _obtener_geotags(rendimiento_path)
+
+    res_apt_x, res_apt_y = scale_apt[0], scale_apt[1]
+    res_ren_x, res_ren_y = scale_ren[0], scale_ren[1]
+    x0_apt, y0_apt = tie_apt[3], tie_apt[4]
+    x0_ren, y0_ren = tie_ren[3], tie_ren[4]
+
+    H, W = apt_shape
+    r_coords = (np.arange(H, dtype=np.float32) * res_apt_y + (y0_ren - y0_apt)) / res_ren_y
+    c_coords = (np.arange(W, dtype=np.float32) * res_apt_x + (x0_apt - x0_ren)) / res_ren_x
+
+    grid_r, grid_c = np.meshgrid(r_coords, c_coords, indexing='ij')
+    coords = np.array([grid_r, grid_c])
+    destino = scipy.ndimage.map_coordinates(ren, coords, order=1, mode='constant', cval=np.nan)
+    return destino.astype(np.float32)
 
 
 def cruzar(aptitud_path, rendimiento_path, umbral,
            out_en_aptas, out_ranking, out_json):
-    """Genera las dos salidas del cruce y un JSON de estadísticas. Devuelve el dict.
-
-    - aptitud_path: mapa_probabilidad_aptitud.tif (nodata -9999.0; 0.0 = exclusión).
-    - rendimiento_path: *_specific_yield.tif del motor (kWh/kWp/año).
-    - umbral: probabilidad mínima para considerar una celda "apta" (p. ej. 0.70).
-    """
-    with rasterio.open(aptitud_path) as apt:
-        aptitud = apt.read(1).astype(np.float32)
-        meta = apt.meta.copy()
-        rendimiento = _alinear_rendimiento(rendimiento_path, apt)
+    """Genera las dos salidas del cruce y un JSON de estadísticas. Devuelve el dict."""
+    if rasterio is not None:
+        try:
+            with rasterio.open(aptitud_path) as apt:
+                aptitud = apt.read(1).astype(np.float32)
+                meta = apt.meta.copy()
+                rendimiento = _alinear_rendimiento(rendimiento_path, apt)
+        except Exception:
+            aptitud = tifffile.imread(aptitud_path).astype(np.float32)
+            meta = None
+            rendimiento = _alinear_rendimiento(rendimiento_path, aptitud_path)
+    else:
+        aptitud = tifffile.imread(aptitud_path).astype(np.float32)
+        meta = None
+        rendimiento = _alinear_rendimiento(rendimiento_path, aptitud_path)
 
     # Celdas con dato real en ambas capas (excluye nodata de aptitud y NaN de rendimiento).
     base_valida = (aptitud != NODATA) & np.isfinite(aptitud) & np.isfinite(rendimiento)
@@ -88,11 +146,6 @@ def cruzar(aptitud_path, rendimiento_path, umbral,
     ranking[base_valida] = (aptitud[base_valida] * yield_norm[base_valida]).astype(np.float32)
 
     # --- Análisis de sensibilidad de la fórmula de combinación ---
-    # El producto es una decisión de diseño justificada solo narrativamente (ver docstring),
-    # a diferencia de los pesos AHP del proyecto (derivados formalmente con Ratio de
-    # Consistencia de Saaty, ver src/ahp.py). Se contrasta contra una alternativa razonable
-    # (media aritmética ponderada 50/50) para reportar cuán sensible es el ranking a esta
-    # elección — no para reemplazar la fórmula, sino para que quede auditable en el informe.
     ranking_prod = ranking[base_valida]
     ranking_media = 0.5 * aptitud[base_valida] + 0.5 * yield_norm[base_valida]
     rho_formula, _ = spearmanr(ranking_prod, ranking_media)
@@ -102,11 +155,19 @@ def cruzar(aptitud_path, rendimiento_path, umbral,
     overlap_top1pct_pct = round(100.0 * len(top_prod & top_media) / k_top, 1)
 
     # --- Escribir GeoTIFFs (mismo perfil que la aptitud) ---
-    meta.update(dtype=rasterio.float32, count=1, nodata=NODATA)
+    _, _, tags = _obtener_geotags(aptitud_path)
     for path, data in ((out_en_aptas, en_aptas), (out_ranking, ranking)):
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with rasterio.open(path, "w", **meta) as dst:
-            dst.write(data, 1)
+        if meta is not None and rasterio is not None:
+            try:
+                meta.update(dtype=rasterio.float32, count=1, nodata=NODATA)
+                with rasterio.open(path, "w", **meta) as dst:
+                    dst.write(data, 1)
+                continue
+            except Exception:
+                pass
+        if tifffile is not None:
+            tifffile.imwrite(path, data.astype(np.float32), extratags=tags)
 
     # --- Estadísticas ---
     y_region = rendimiento[base_valida]

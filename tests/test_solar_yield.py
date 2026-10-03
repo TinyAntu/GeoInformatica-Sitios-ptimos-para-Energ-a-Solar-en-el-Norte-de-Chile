@@ -10,10 +10,14 @@ import types
 import unittest
 import tempfile
 from unittest import mock
-
 import numpy as np
-import rasterio
-from rasterio.transform import from_origin
+
+try:
+    import rasterio
+    from rasterio.transform import from_origin
+except (ImportError, Exception):
+    rasterio = None
+    from_origin = None
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.utils import _asegurar_proj_lib
@@ -77,6 +81,19 @@ class TestConstruirComando(unittest.TestCase):
         self.assertIn("--gcr", cmd)
         self.assertNotIn("--tilt", cmd)
 
+    def test_opciones_v04(self):
+        cmd = construir_comando("bin", "d.tif", "out", -23.6, -69.5, "2026-01-01",
+                                mount="tilt", tilt=23, tile=1024, horizon_radius=40,
+                                ghi_monthly="data/raw/ghi_MM.tif", ghi_unit="kwh")
+        self.assertIn("--tile", cmd)
+        self.assertEqual(cmd[cmd.index("--tile") + 1], "1024")
+        self.assertIn("--horizon-radius", cmd)
+        self.assertEqual(cmd[cmd.index("--horizon-radius") + 1], "40")
+        self.assertIn("--ghi-monthly", cmd)
+        self.assertEqual(cmd[cmd.index("--ghi-monthly") + 1], "data/raw/ghi_MM.tif")
+        self.assertIn("--ghi-unit", cmd)
+        self.assertEqual(cmd[cmd.index("--ghi-unit") + 1], "kwh")
+
     def test_montaje_invalido(self):
         with self.assertRaises(ValueError):
             construir_comando("bin", "d.tif", "out", 0, 0, "2026-01-01", mount="foo")
@@ -92,6 +109,7 @@ class TestErroresAccionables(unittest.TestCase):
             generar_mapa_rendimiento("no_existe.tif", "out", -23.6, -69.5, "2026-01-01")
 
 
+@unittest.skipIf(rasterio is None, "rasterio no disponible en el entorno")
 class TestValidacionRaster(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -129,6 +147,7 @@ class TestValidacionRaster(unittest.TestCase):
         _validar_raster_salida(p, 32719, BOUNDS_UTM)  # no debe lanzar
 
 
+@unittest.skipIf(rasterio is None, "rasterio no disponible en el entorno")
 class TestFlujoConMotorSimulado(unittest.TestCase):
     """Simula una corrida exitosa del motor (sin binario real) y valida el post-proceso."""
 
