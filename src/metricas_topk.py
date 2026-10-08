@@ -286,14 +286,21 @@ def calcular_metricas_topk(prob, valido, mask_plantas, plantas_rc, area_px_m2,
 # La grilla de features no depende del modelo: construirla implica reproyectar 4 rásters y
 # 3 transformadas de distancia, lo más caro de este script. Se cachea por resolución para
 # reutilizarla entre las variantes A-500 y los dos folds LORO (5 usos, 1 construcción).
+#
+# La clave incluye las capas de infraestructura además de la resolución: la auditoría de
+# infraestructura (src/auditoria_infraestructura.py) evalúa en el mismo proceso grillas
+# construidas con distintas capas de subestaciones, y una clave solo por resolución le
+# devolvería en silencio la grilla de la capa anterior.
 _CACHE_GRILLA = {}
 
 
 def _grilla_features(config, resolucion_m):
-    if resolucion_m not in _CACHE_GRILLA:
+    vectores = config['paths']['raw']['vectores']
+    clave = (resolucion_m, vectores['lineas'], vectores['almacenamiento'], vectores['subestaciones'])
+    if clave not in _CACHE_GRILLA:
         from src.explainability_spatial import _construir_features
-        _CACHE_GRILLA[resolucion_m] = _construir_features(config, resolucion_m)
-    return _CACHE_GRILLA[resolucion_m]
+        _CACHE_GRILLA[clave] = _construir_features(config, resolucion_m)
+    return _CACHE_GRILLA[clave]
 
 
 def _grilla_desde_modelo(config, directorio_raiz, modelo, resolucion_m):

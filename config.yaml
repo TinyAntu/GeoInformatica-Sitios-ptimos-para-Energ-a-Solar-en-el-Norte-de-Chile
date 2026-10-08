@@ -141,6 +141,19 @@ transferibilidad:
 validacion:
   tamano_bloque_km: 30   # Lado del bloque cuadrado para Spatial Block CV (en km)
 
+# Estudio aparte, FUERA del pipeline: auditoría de fuga temporal en las distancias a
+# subestaciones, líneas de transmisión y almacenamiento
+# (python scripts/run_auditoria_infraestructura.py [--optimizar]). Reentrena el modelo con tres
+# definiciones de cada distancia (todas / sin dedicadas / solo previas a cada planta), por
+# separado y en conjunto, y compara. No toca los artefactos del pipeline: todo lo que produce
+# queda en `dir_resultados` (y el anexo Optuna en su subcarpeta `anexo_optuna/`).
+auditoria_infraestructura:
+  # Un elemento es "previo" si entró en operación al menos este margen antes de la planta:
+  # la infraestructura de conexión se construye junto con el proyecto, no en la fecha exacta
+  # de su entrada en operación.
+  margen_meses: 12
+  dir_resultados: "data/results/auditoria_infraestructura"
+
 # Grilla de salida del mapa de aptitud ML (hallazgo 2.1)
 salida_mapa:
   # Resolución (m) de la grilla de inferencia. Más fina => distancias a infraestructura
