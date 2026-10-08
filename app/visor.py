@@ -216,10 +216,22 @@ def _pestana_zona_estudio(manifest, stats):
         cm = stats.get("comparacion_montaje", {})
         if cm:
             f_, s_ = cm.get("rendimiento_fijo_aptas", {}), cm.get("rendimiento_seguidor_aptas", {})
-            st.metric("Ganancia del seguidor",
-                      f"{cm.get('ganancia_seguidor_media_pct','–')}%",
-                      f"ref. autor +{cm.get('referencia_autor_pct','–')}%")
-            st.write(f"Fijo: **{f_.get('media','–')}** · Seguidor: **{s_.get('media','–')}** kWh/kWp/año")
+            t0_ = cm.get("rendimiento_fijo_tilt0_aptas")
+            # La referencia del autor es contra el fijo horizontal: solo se muestra junto a
+            # la ganancia sobre tilt 0°, nunca junto a la ganancia sobre 23°.
+            if t0_:
+                st.metric("Ganancia del seguidor (vs. fijo 0°)",
+                          f"{cm.get('ganancia_seguidor_vs_tilt0_media_pct','–')}%",
+                          f"ref. autor +{cm.get('referencia_autor_pct','–')}%",
+                          delta_color="off")
+                st.write(f"Fijo 0°: **{t0_.get('media','–')}** · Fijo 23°: **{f_.get('media','–')}** · "
+                         f"Seguidor: **{s_.get('media','–')}** kWh/kWp/año")
+                st.write(f"Seguidor vs. fijo 23°: **{cm.get('ganancia_seguidor_media_pct','–')}%** · "
+                         f"23° vs. 0°: **{cm.get('ganancia_tilt23_vs_tilt0_media_pct','–')}%**")
+            else:
+                st.metric("Ganancia del seguidor (vs. fijo 23°)",
+                          f"{cm.get('ganancia_seguidor_media_pct','–')}%")
+                st.write(f"Fijo 23°: **{f_.get('media','–')}** · Seguidor: **{s_.get('media','–')}** kWh/kWp/año")
             if "n_bloques_espaciales" in cm:
                 st.caption(f"Mediana por bloque espacial ({cm['n_bloques_espaciales']} bloques "
                            f"de {cm.get('tamano_bloque_km','–')} km, independientes de la "

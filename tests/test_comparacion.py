@@ -13,7 +13,7 @@ import rasterio
 from rasterio.transform import from_origin
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from src.comparacion_montaje import comparar
+from src.comparacion_montaje import comparar, _interpretar
 from src.cruce_aptitud_rendimiento import NODATA
 
 
@@ -71,6 +71,8 @@ class TestComparacion(unittest.TestCase):
         self.assertAlmostEqual(stats["ganancia_tilt23_vs_tilt0_media_pct"], 40.0, places=1)
         # seguidor=2100 vs tilt0=1000 -> +110%
         self.assertAlmostEqual(stats["ganancia_seguidor_vs_tilt0_media_pct"], 110.0, places=1)
+        # +110 % contra horizontal se aleja del ~36 % del autor: el texto debe señalarlo.
+        self.assertIn("por encima de la referencia", stats["interpretacion"])
 
     def test_sin_aptas_lanza(self):
         apt_baja = _escribir(os.path.join(self.dir, "apt_baja.tif"),
@@ -78,6 +80,30 @@ class TestComparacion(unittest.TestCase):
         with self.assertRaises(ValueError):
             comparar(self.fijo_p, self.seg_p, apt_baja, 0.70,
                      os.path.join(self.dir, "x.json"))
+
+
+class TestInterpretacion(unittest.TestCase):
+    """La referencia del autor (~36 %) es contra un fijo horizontal: solo se contrasta con la
+    ganancia sobre tilt=0, nunca con la ganancia sobre 23° (hallazgo A6 de la revisión v0.4)."""
+
+    def test_sin_tilt0_no_contrasta_con_la_referencia(self):
+        # +24,4 % sobre 23° es el valor real v0.4; antes el texto lo declaraba "por debajo".
+        texto = _interpretar(24.4, 99, 509858)
+        self.assertNotIn("por debajo", texto)
+        self.assertIn("--incluir-tilt0", texto)
+
+    def test_con_tilt0_dentro_de_la_tolerancia_concuerda(self):
+        texto = _interpretar(24.4, 99, 509858, ganancia_vs_tilt0_pct=35.6,
+                             ganancia_tilt23_vs_tilt0_pct=9.0)
+        self.assertIn("concuerda con la referencia", texto)
+        self.assertNotIn("por debajo", texto)
+        self.assertIn("Inclinar a 23° rinde 9.0% más", texto)
+
+    def test_con_tilt0_lejos_de_la_referencia_lo_señala(self):
+        texto = _interpretar(10.0, 99, 509858, ganancia_vs_tilt0_pct=20.0,
+                             ganancia_tilt23_vs_tilt0_pct=-4.0)
+        self.assertIn("por debajo de la referencia", texto)
+        self.assertIn("rinde 4.0% menos", texto)
 
 
 if __name__ == "__main__":
