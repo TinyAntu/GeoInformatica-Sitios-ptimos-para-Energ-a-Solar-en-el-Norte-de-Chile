@@ -115,10 +115,11 @@ def main():
         print(f"  Ganancia tilt=23° sobre tilt=0°: media={stats['ganancia_tilt23_vs_tilt0_media_pct']:+}%")
     print(f"  Ganancia seguidor (vs tilt=23°): media={stats['ganancia_seguidor_media_pct']:+}% | "
           f"mediana por celda={stats['ganancia_seguidor_mediana_celda_pct']:+}% | "
-          f"mediana por bloque={stats['ganancia_seguidor_mediana_bloque_pct']}% "
-          f"(referencia autor +{stats['referencia_autor_pct']}%)")
+          f"mediana por bloque={stats['ganancia_seguidor_mediana_bloque_pct']}%")
+    # La referencia del autor es contra el fijo horizontal: se muestra junto a esa ganancia.
     if 'ganancia_seguidor_vs_tilt0_media_pct' in stats:
-        print(f"  Ganancia seguidor (vs tilt=0°): media={stats['ganancia_seguidor_vs_tilt0_media_pct']:+}%")
+        print(f"  Ganancia seguidor (vs tilt=0°): media={stats['ganancia_seguidor_vs_tilt0_media_pct']:+}% "
+              f"(referencia autor +{stats['referencia_autor_pct']}%)")
     print(f"  JSON: {os.path.basename(out_json)}")
     return 0
 

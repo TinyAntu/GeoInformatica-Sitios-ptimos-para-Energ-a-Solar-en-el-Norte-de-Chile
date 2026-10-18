@@ -159,6 +159,12 @@ class TestOrquestadorDeFases(unittest.TestCase):
                        'run_solar_yield.py', 'run_consenso.py', 'run_shap.py'):
             self.assertEqual(grabador.args_de(script), ['--config', otro])
 
+    def test_comparacion_de_montajes_incluye_tilt0(self):
+        """La etapa 10 pide el fijo horizontal: es la base de la referencia del autor (~36 %)."""
+        grabador = self._correr(['--config', 'config.yaml'])
+        self.assertEqual(grabador.args_de('run_comparacion_montaje.py'),
+                         ['--config', 'config.yaml', '--incluir-tilt0'])
+
     def test_el_orquestador_no_carga_datos_geoespaciales(self):
         """La razón de ser del refactor: el proceso padre no retiene capas en memoria.
 

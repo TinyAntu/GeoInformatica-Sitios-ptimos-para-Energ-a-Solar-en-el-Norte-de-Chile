@@ -170,9 +170,11 @@ FASES = [
               salidas=lambda ctx: ctx['salidas_cruce']),
         # run_comparacion_montaje.py genera el rendimiento seguidor por su cuenta si falta
         # (ver src/comparacion_montaje.py -> _asegurar_rendimiento); también best-effort.
-        Etapa('10', "Comparación fijo vs. seguidor",
+        # --incluir-tilt0: la referencia del autor (~36 %) es contra el fijo horizontal, así
+        # que sin tilt=0 la ganancia del seguidor no tiene con qué contrastarse.
+        Etapa('10', "Comparación fijo (0° y 23°) vs. seguidor",
               script="run_comparacion_montaje.py",
-              args_extra=lambda ctx: ['--config', ctx['args'].config],
+              args_extra=lambda ctx: ['--config', ctx['args'].config, '--incluir-tilt0'],
               entradas=lambda ctx: [ctx['ruta_config'], ctx['mapa_rf']],
               salidas=lambda ctx: [ctx['comparacion_json']],
               best_effort=True),

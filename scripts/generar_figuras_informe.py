@@ -215,6 +215,17 @@ def renderizar_mapa(tif_path, titulo, etiqueta_leyenda, out_png, regiones,
     print(f"  -> Guardado: {out_png}")
 
 
+def _resolucion_m(ruta_tif):
+    """Tamaño de celda (m) de un ráster, redondeado; None si no existe o no se puede leer."""
+    if not ruta_tif or not os.path.exists(ruta_tif):
+        return None
+    try:
+        with rasterio.open(ruta_tif) as r:
+            return round(r.res[0])
+    except rasterio.errors.RasterioIOError:
+        return None
+
+
 def renderizar_comparacion_montaje(json_path, out_png):
     """Gráfico de barras fijo vs. seguidor (no es un mapa: sin norte/escala/CRS, pero con
     fuente y fecha). Colores Okabe-Ito azul/vermellón: par de alto contraste, distinguible
@@ -224,25 +235,33 @@ def renderizar_comparacion_montaje(json_path, out_png):
         data = json.load(f)
     fijo = data['rendimiento_fijo_aptas']
     seguidor = data['rendimiento_seguidor_aptas']
+    fijo_tilt0 = data.get('rendimiento_fijo_tilt0_aptas')  # solo si se corrió --incluir-tilt0
 
     metricas = ['min', 'media', 'p50', 'p90', 'max']
     etiquetas_metricas = ['Mín', 'Media', 'Mediana', 'p90', 'Máx']
-    vals_fijo = [fijo[m] for m in metricas]
-    vals_seguidor = [seguidor[m] for m in metricas]
 
-    color_fijo, color_seguidor = '#0072B2', '#D55E00'  # azul / vermellón (Okabe-Ito)
+    # (etiqueta, resumen, color). El celeste del horizontal es el tercer color Okabe-Ito,
+    # distinguible del azul del fijo 23° y del vermellón del seguidor.
+    series = [('Montaje fijo (tilt 23°)', fijo, '#0072B2'),
+              ('Seguidor de un eje', seguidor, '#D55E00')]
+    if fijo_tilt0:
+        series.insert(0, ('Montaje fijo horizontal (tilt 0°)', fijo_tilt0, '#56B4E9'))
 
     x = np.arange(len(metricas))
-    ancho = 0.34
+    ancho = 0.68 / len(series)
     fig, ax = plt.subplots(figsize=(7.5, 5))
-    b1 = ax.bar(x - ancho / 2, vals_fijo, ancho, label='Montaje fijo (tilt 23°)', color=color_fijo)
-    b2 = ax.bar(x + ancho / 2, vals_seguidor, ancho, label='Seguidor de un eje', color=color_seguidor)
-    ax.bar_label(b1, fmt='%.0f', fontsize=7.5, color=COLOR_TINTA, padding=2)
-    ax.bar_label(b2, fmt='%.0f', fontsize=7.5, color=COLOR_TINTA, padding=2)
+    todos_los_valores = []
+    for i, (etiqueta, resumen, color) in enumerate(series):
+        valores = [resumen[m] for m in metricas]
+        todos_los_valores += valores
+        desplazamiento = (i - (len(series) - 1) / 2) * ancho
+        barras = ax.bar(x + desplazamiento, valores, ancho, label=etiqueta, color=color)
+        ax.bar_label(barras, fmt='%.0f', fontsize=6.5 if fijo_tilt0 else 7.5,
+                     color=COLOR_TINTA, padding=2)
 
     # Margen superior explícito: dos las barras y la leyenda quepan sin recortarse ni
     # solaparse (el único hueco libre real es sobre la columna "Mín", la más baja).
-    ax.set_ylim(0, max(vals_fijo + vals_seguidor) * 1.18)
+    ax.set_ylim(0, max(todos_los_valores) * (1.38 if fijo_tilt0 else 1.18))
 
     ax.set_xticks(x)
     ax.set_xticklabels(etiquetas_metricas, fontsize=9)
@@ -250,19 +269,36 @@ def renderizar_comparacion_montaje(json_path, out_png):
     ax.set_title('Rendimiento fotovoltaico: montaje fijo vs. seguidor de un eje\n'
                  '(zonas aptas, probabilidad RF ≥ 0.70)', fontsize=11.5, color=COLOR_TINTA, pad=10)
 
+    # La referencia del autor (~36 %) es contra el fijo horizontal: se rotula solo junto a
+    # la ganancia sobre tilt 0°. Ponerla junto a la ganancia sobre 23° sugería un déficit.
     ganancia = data.get('ganancia_seguidor_media_pct')
+    ganancia_vs_tilt0 = data.get('ganancia_seguidor_vs_tilt0_media_pct')
+    ganancia_23_vs_0 = data.get('ganancia_tilt23_vs_tilt0_media_pct')
     ref_autor = data.get('referencia_autor_pct')
+    lineas = []
     if ganancia is not None:
-        texto = f"Ganancia del seguidor: {ganancia:+.1f}%"
+        lineas.append(f"Seguidor vs. fijo 23°: {ganancia:+.1f}%")
+    if ganancia_vs_tilt0 is not None:
+        texto = f"Seguidor vs. fijo 0°: {ganancia_vs_tilt0:+.1f}%"
         if ref_autor is not None:
-            texto += f"\n(referencia del autor: +{ref_autor:.0f}%)"
-        ax.text(0.02, 0.97, texto, transform=ax.transAxes, ha='left', va='top', fontsize=9,
-                color=COLOR_TINTA, fontweight='bold',
+            texto += f" (ref. autor +{ref_autor:.0f}%)"
+        lineas.append(texto)
+    if ganancia_23_vs_0 is not None:
+        lineas.append(f"Fijo 23° vs. fijo 0°: {ganancia_23_vs_0:+.1f}%")
+    if lineas:
+        ax.text(0.02, 0.97, "\n".join(lineas), transform=ax.transAxes, ha='left', va='top',
+                fontsize=9, color=COLOR_TINTA, fontweight='bold',
                 bbox=dict(boxstyle='round', facecolor='white', edgecolor='#bbbbbb', alpha=0.92))
 
-    # Leyenda bajo la caja de ganancia, en el mismo cuadrante libre (sobre "Mín").
-    ax.legend(fontsize=9, loc='upper left', bbox_to_anchor=(0.02, 0.80),
-             frameon=True, framealpha=0.92, edgecolor='#bbbbbb')
+    # Con dos series la leyenda cabe bajo la caja de ganancia (sobre "Mín", la columna más
+    # baja). Con tres, la caja crece y la leyenda bajaría hasta tapar "Media": va arriba a la
+    # derecha, en el margen que abre el ylim más alto.
+    if fijo_tilt0:
+        ax.legend(fontsize=8.5, loc='upper right', bbox_to_anchor=(0.99, 0.99),
+                  frameon=True, framealpha=0.92, edgecolor='#bbbbbb')
+    else:
+        ax.legend(fontsize=9, loc='upper left', bbox_to_anchor=(0.02, 0.80),
+                  frameon=True, framealpha=0.92, edgecolor='#bbbbbb')
     ax.tick_params(labelsize=9, colors=COLOR_TINTA)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -271,8 +307,19 @@ def renderizar_comparacion_montaje(json_path, out_png):
     ax.grid(axis='y', color='#e5e5e5', linewidth=0.7, zorder=0)
     ax.set_axisbelow(True)
 
-    pie = ("Fuente: solarpv-rs (motor Rust, validado contra pvlib ≤0.2 %), grilla 300 m. "
-           "Elaboración propia, Grupo Solar (USACH).\n"
+    # Las resoluciones se leen de los rásters, no se escriben a mano: el pie decía "300 m"
+    # cuando el motor ya corría sobre el DEM de 90 m. Las estadísticas se calculan sobre la
+    # grilla del mapa de aptitud, a la que `comparar` alinea el rendimiento.
+    res_motor = _resolucion_m(data.get('entradas', {}).get('fijo_tilt23'))
+    res_aptitud = _resolucion_m(os.path.join(os.path.dirname(json_path),
+                                             'mapa_probabilidad_aptitud.tif'))
+    grilla = ""
+    if res_motor:
+        grilla += f", motor a {res_motor} m (DEM)"
+    if res_aptitud:
+        grilla += f", comparado sobre la grilla de {res_aptitud} m del mapa de aptitud"
+    pie = (f"Fuente: solarpv-rs (motor Rust, validado contra pvlib ≤0.2 %){grilla}.\n"
+           "Elaboración propia, Grupo Solar (USACH). "
            f"Fecha de elaboración: {date.today().strftime('%d-%m-%Y')}")
     fig.text(0.5, 0.01, pie, ha='center', va='bottom', fontsize=7.5, color=COLOR_TINTA)
 

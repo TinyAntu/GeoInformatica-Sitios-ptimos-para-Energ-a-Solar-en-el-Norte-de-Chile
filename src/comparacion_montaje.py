@@ -28,6 +28,12 @@ except (ImportError, Exception):
 # Reutilizamos utilidades del cruce (T2): alineado a la grilla de aptitud y resumen.
 from src.cruce_aptitud_rendimiento import _alinear_rendimiento, _resumen, _obtener_geotags, NODATA
 
+# Ganancia del seguidor de un eje sobre un fijo HORIZONTAL según el autor del motor (pvlib).
+REFERENCIA_AUTOR_PCT = 36.0
+# Margen para decir que la ganancia "concuerda": la referencia es de un sitio sintético a
+# otra latitud y sin nuestro DEM, así que unos pocos puntos de diferencia son esperables.
+TOLERANCIA_REFERENCIA_PP = 5.0
+
 
 def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bloque_km=15, fijo_tilt0_path=None):
     """Compara rendimiento fijo vs. seguidor (y opcionalmente fijo tilt=0) en zonas aptas y guarda un JSON.
@@ -104,6 +110,13 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
     if fijo_tilt0_path:
         entradas["fijo_tilt0"] = fijo_tilt0_path
 
+    # Las ganancias contra el fijo horizontal se calculan antes de interpretar: la referencia
+    # del autor (~36 %) está medida contra tilt=0, así que solo con ellas se puede contrastar.
+    gan_tilt23_vs_tilt0 = gan_seg_vs_tilt0 = None
+    if fijo_tilt0_aptas is not None:
+        gan_tilt23_vs_tilt0 = float(100.0 * (fijo_aptas.mean() / fijo_tilt0_aptas.mean() - 1))
+        gan_seg_vs_tilt0 = float(100.0 * (seg_aptas.mean() / fijo_tilt0_aptas.mean() - 1))
+
     stats = {
         "umbral_probabilidad": float(umbral),
         "celdas_aptas": int(aptas.sum()),
@@ -114,15 +127,14 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
         "ganancia_seguidor_media_pct": round(ganancia_media_pct, 2),
         "ganancia_seguidor_mediana_celda_pct": round(ganancia_mediana_celda_pct, 2),
         "ganancia_seguidor_mediana_bloque_pct": ganancia_mediana_bloque_pct,
-        "referencia_autor_pct": 36.0,
-        "interpretacion": _interpretar(ganancia_media_pct, n_bloques, int(aptas.sum())),
+        "referencia_autor_pct": REFERENCIA_AUTOR_PCT,
+        "interpretacion": _interpretar(ganancia_media_pct, n_bloques, int(aptas.sum()),
+                                       gan_seg_vs_tilt0, gan_tilt23_vs_tilt0),
         "entradas": entradas,
     }
 
     if fijo_tilt0_aptas is not None:
         stats["rendimiento_fijo_tilt0_aptas"] = _resumen(fijo_tilt0_aptas)
-        gan_tilt23_vs_tilt0 = float(100.0 * (fijo_aptas.mean() / fijo_tilt0_aptas.mean() - 1))
-        gan_seg_vs_tilt0 = float(100.0 * (seg_aptas.mean() / fijo_tilt0_aptas.mean() - 1))
         stats["ganancia_tilt23_vs_tilt0_media_pct"] = round(gan_tilt23_vs_tilt0, 2)
         stats["ganancia_seguidor_vs_tilt0_media_pct"] = round(gan_seg_vs_tilt0, 2)
 
@@ -132,17 +144,43 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
     return stats
 
 
-def _interpretar(ganancia_pct, n_bloques, n_celdas):
-    """Lectura para los perfiles de inversión a partir de la ganancia del seguidor."""
+def _interpretar(ganancia_pct, n_bloques, n_celdas, ganancia_vs_tilt0_pct=None,
+                 ganancia_tilt23_vs_tilt0_pct=None):
+    """Lectura para los perfiles de inversión a partir de la ganancia del seguidor.
+
+    `ganancia_pct` es contra el fijo a 23°. La referencia del autor se contrasta solo con
+    `ganancia_vs_tilt0_pct` (contra el fijo horizontal), que es su misma base: comparar el
+    36 % con la ganancia sobre 23° sugería, erróneamente, que el seguidor rendía de menos.
+    """
     base = (
-        f"El seguidor de un eje rinde {ganancia_pct:+.1f}% sobre el montaje fijo en las "
-        "zonas aptas. El perfil 'agresivo' (prioriza radiación/rendimiento) se beneficia "
+        f"El seguidor de un eje rinde {ganancia_pct:+.1f}% sobre el montaje fijo a 23° en "
+        "las zonas aptas. El perfil 'agresivo' (prioriza radiación/rendimiento) se beneficia "
         "más de esta ganancia; el 'conservador' (prioriza cercanía a infraestructura) la "
         "pondera contra el mayor CAPEX y mantenimiento del seguidor."
     )
-    if ganancia_pct < 25:
-        base += " La ganancia medida queda por debajo del ~36% de referencia del " \
-                "autor: conviene discutir por qué (terreno, latitud, sombreado)."
+    if ganancia_vs_tilt0_pct is None:
+        base += (
+            f" La referencia del autor (~{REFERENCIA_AUTOR_PCT:.0f}%) está medida contra un "
+            "fijo horizontal, no contra 23°: para contrastarla, corre la comparación con "
+            "--incluir-tilt0."
+        )
+    else:
+        diferencia_pp = ganancia_vs_tilt0_pct - REFERENCIA_AUTOR_PCT
+        base += (
+            f" Frente al fijo horizontal (tilt 0°), la misma base de la referencia del autor, "
+            f"la ganancia es {ganancia_vs_tilt0_pct:+.1f}% ({diferencia_pp:+.1f} puntos "
+            f"respecto del ~{REFERENCIA_AUTOR_PCT:.0f}%)"
+        )
+        if abs(diferencia_pp) <= TOLERANCIA_REFERENCIA_PP:
+            base += ": concuerda con la referencia."
+        else:
+            relacion = "por debajo" if diferencia_pp < 0 else "por encima"
+            base += (f": queda {relacion} de la referencia; conviene discutir por qué "
+                     "(terreno, latitud, sombreado).")
+        if ganancia_tilt23_vs_tilt0_pct is not None:
+            relacion = "más" if ganancia_tilt23_vs_tilt0_pct >= 0 else "menos"
+            base += (f" Inclinar a 23° rinde {abs(ganancia_tilt23_vs_tilt0_pct):.1f}% "
+                     f"{relacion} que el montaje horizontal.")
     base += (
         f" Nota metodológica: {n_celdas:,} celdas aptas caen en solo {n_bloques} bloques "
         "espaciales independientes (pixeles vecinos comparten terreno/sombreado); "
