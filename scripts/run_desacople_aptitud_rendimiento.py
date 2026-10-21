@@ -4,8 +4,10 @@ Calcula y genera:
   1. Preparación de capas de infraestructura sin elementos dedicados (TIPO != 'DEDICADO').
   2. Entrenamiento de Random Forest y mapa ráster continuo (mapa_probabilidad_aptitud_sin_dedicadas.tif).
   3. Alineación espacial y cruce celda a celda contra el rendimiento físico (solarpv-rs v0.4.0).
-  4. Rendimiento medio y mediano regional vs. zonas aptas (P >= 0.70), Correlación de Spearman por celda y agregada en bloques de 30 km del SBCV, Intervalo de confianza al 95% por Bootstrap espacial de bloques.
-  5. Exportación de resultados a tabla CSV consolidada y JSON de metadatos.
+  4. Rendimiento medio y mediano regional vs. zonas aptas (P >= 0.70).
+  5. Correlación de Spearman por celda y agregada en bloques de 30 km del SBCV.
+  6. Intervalo de confianza al 95% por Bootstrap espacial de bloques.
+  7. Exportación de resultados a tabla CSV consolidada y JSON de metadatos.
 
 Uso:
     python scripts/run_desacople_aptitud_rendimiento.py --config config.yaml
@@ -132,8 +134,12 @@ def main():
     print("-" * 90)
     sc = reg['spearman_celda']
     sb = reg['spearman_bloque']
+    sca = apt['spearman_celda']
+    sba = apt['spearman_bloque']
     print(f"Spearman por celda (regional):    rho = {sc['rho']:.4f} (IC 95%: [{sc['ic_95_inferior']:.4f}, {sc['ic_95_superior']:.4f}])")
     print(f"Spearman por bloque (regional):   rho = {sb['rho']:.4f} (IC 95%: [{sb['ic_95_inferior']:.4f}, {sb['ic_95_superior']:.4f}]) | p = {sb['p_valor']}")
+    print(f"Spearman por celda (aptas):       rho = {sca['rho']:.4f} (IC 95%: [{sca['ic_95_inferior']:.4f}, {sca['ic_95_superior']:.4f}])")
+    print(f"Spearman por bloque (aptas):      rho = {sba['rho']:.4f} (IC 95%: [{sba['ic_95_inferior']:.4f}, {sba['ic_95_superior']:.4f}]) | p = {sba['p_valor']}")
     print("-" * 90)
     print(f"Tabla CSV generada en:            {out_csv_results}")
     print(f"JSON con metadatos en:            {out_json_path}")

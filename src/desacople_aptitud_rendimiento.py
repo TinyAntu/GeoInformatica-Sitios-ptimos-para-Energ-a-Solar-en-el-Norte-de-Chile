@@ -376,6 +376,31 @@ def calcular_estadisticas_desacople(cruce: dict, tamano_bloque_km: float = 30.0,
     ic_bloque_aptas = np.percentile(boot_rhos_bloque_aptas, [2.5, 97.5])
     se_bloque_aptas = float(boot_rhos_bloque_aptas.std())
 
+    # Cluster/Block bootstrap para celda en subconjunto de celdas aptas
+    sub_paso_a = max(1, len(apt_aptas) // 100_000)
+    sub_idx_a = np.arange(0, len(apt_aptas), sub_paso_a)
+    sub_apt_a = apt_aptas[sub_idx_a]
+    sub_rend_a = rend_aptas[sub_idx_a]
+    sub_bi_a = block_indices_aptas[sub_idx_a]
+
+    block_cell_data_aptas = [
+        (sub_apt_a[sub_bi_a == bi], sub_rend_a[sub_bi_a == bi])
+        for bi in range(n_bloques_aptas)
+    ]
+
+    boot_rhos_celda_aptas = np.empty(n_bootstrap)
+    for i in range(n_bootstrap):
+        sampled_bia = rng.choice(n_bloques_aptas, size=n_bloques_aptas, replace=True)
+        a_parts = [block_cell_data_aptas[bi][0] for bi in sampled_bia if len(block_cell_data_aptas[bi][0]) > 0]
+        r_parts = [block_cell_data_aptas[bi][1] for bi in sampled_bia if len(block_cell_data_aptas[bi][1]) > 0]
+        if a_parts:
+            boot_rhos_celda_aptas[i] = spearmanr(np.concatenate(a_parts), np.concatenate(r_parts)).statistic
+        else:
+            boot_rhos_celda_aptas[i] = rho_celda_aptas
+
+    ic_celda_aptas = np.percentile(boot_rhos_celda_aptas, [2.5, 97.5])
+    se_celda_aptas = float(boot_rhos_celda_aptas.std())
+
     resultados = {
         'resumen_rendimiento': stats_base,
         'tamano_bloque_km': tamano_bloque_km,
@@ -405,6 +430,9 @@ def calcular_estadisticas_desacople(cruce: dict, tamano_bloque_km: float = 30.0,
             'spearman_celda': {
                 'rho': round(float(rho_celda_aptas), 4),
                 'p_valor': float(pval_celda_aptas),
+                'ic_95_inferior': round(float(ic_celda_aptas[0]), 4),
+                'ic_95_superior': round(float(ic_celda_aptas[1]), 4),
+                'std_bootstrap': round(se_celda_aptas, 4),
             },
             'spearman_bloque': {
                 'rho': round(float(rho_bloque_aptas), 4),
@@ -564,8 +592,8 @@ def exportar_tabla_csv(resultados: dict, out_csv_path: str) -> pd.DataFrame:
             'ambito': 'Por Celda (Subconjunto Aptas)',
             'valor': apt['spearman_celda']['rho'],
             'unidad': 'rho',
-            'ic_95_inferior': '',
-            'ic_95_superior': '',
+            'ic_95_inferior': apt['spearman_celda']['ic_95_inferior'],
+            'ic_95_superior': apt['spearman_celda']['ic_95_superior'],
             'p_valor': '< 1e-15',
             'descripcion': 'Correlación de Spearman dentro de las celdas clasificadas como aptas',
         },
