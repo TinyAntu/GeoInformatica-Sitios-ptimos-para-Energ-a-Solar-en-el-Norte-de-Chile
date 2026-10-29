@@ -47,6 +47,19 @@ def _shapefile_paths(shp_path: str) -> list:
     return [base + ext for ext in ['.shp', '.dbf', '.shx', '.prj', '.cpg']]
 
 
+def _archivos_capa_vectorial(ruta: str) -> list:
+    """Archivos en disco de una capa vectorial, para el chequeo incremental.
+
+    En un shapefile los atributos (p. ej. TIPO de una subestación) viven en el .dbf: mirar
+    solo el .shp no detecta una edición de atributos. Se devuelven solo las hermanas que
+    existen, porque una ausente (.cpg es opcional) haría que `_esta_actualizado` nunca
+    diera la etapa por al día.
+    """
+    if ruta.lower().endswith('.shp'):
+        return [p for p in _shapefile_paths(ruta) if os.path.exists(p)]
+    return [ruta]
+
+
 def _pico_memoria_hijos_kb() -> int:
     """Marca de agua de memoria del subproceso más grande lanzado hasta ahora (KiB).
 

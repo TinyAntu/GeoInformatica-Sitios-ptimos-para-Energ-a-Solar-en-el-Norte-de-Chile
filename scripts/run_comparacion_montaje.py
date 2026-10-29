@@ -2,7 +2,7 @@
 
 Asegura que existan ambos mapas de rendimiento (los genera con el wrapper de T1 si
 faltan) y luego computa la ganancia del seguidor dentro de las zonas aptas, guardando
-`data/results/comparacion_montaje.json`.
+`data/results/rendimiento/comparacion_montaje.json`.
 
 Uso:
     python scripts/run_comparacion_montaje.py --config config.yaml
@@ -17,22 +17,28 @@ import yaml
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
-from src.utils import _asegurar_proj_lib
+from src.utils import _asegurar_proj_lib, _esta_actualizado
 _asegurar_proj_lib()
 
-from src.solar_yield import generar_mapa_rendimiento, MotorNoDisponibleError, _reestampar_crs
+from src.solar_yield import (generar_mapa_rendimiento, MotorNoDisponibleError, _reestampar_crs,
+                             MotorSinCorreccionTileError, preparar_ghi)
 from src.comparacion_montaje import comparar
+from src.rutas import ruta_resultado, prefijo_rendimiento
 
 
 def _ruta_abs(ruta: str) -> str:
     return ruta if os.path.isabs(ruta) else os.path.join(directorio_raiz, ruta)
 
 
-def _asegurar_rendimiento(cfg, target_srid, bounds_utm, mount, sufijo, regenerar, tilt=None):
-    """Devuelve la ruta del *_specific_yield.tif del montaje, generándolo si falta."""
-    out_prefix = _ruta_abs(cfg['out_prefix']) + sufijo
+def _asegurar_rendimiento(cfg, prefijo, target_srid, bounds_utm, mount, sufijo, regenerar,
+                          tilt=None, entradas=(), ghi=None):
+    """Devuelve la ruta del *_specific_yield.tif del montaje, generándolo si falta o si es
+    más viejo que `entradas` (config, DEM, GHI): un raster de cielo despejado no debe
+    compararse contra otro calculado con GHI observado. `ghi` es el GHI ya preparado por
+    `main` (el mismo para los tres montajes)."""
+    out_prefix = prefijo + sufijo
     salida = f"{out_prefix}_specific_yield.tif"
-    if os.path.exists(salida) and not regenerar:
+    if not regenerar and _esta_actualizado(list(entradas), [salida]):
         _reestampar_crs(salida, target_srid)
         print(f"  [OK] Ya existe el rendimiento '{mount}' ({sufijo}): {os.path.basename(salida)}")
         return salida
@@ -51,7 +57,7 @@ def _asegurar_rendimiento(cfg, target_srid, bounds_utm, mount, sufijo, regenerar
         gcr=montaje.get('gcr'),
         tile=cfg.get('tile'),
         horizon_radius=cfg.get('horizon_radius'),
-        ghi=_ruta_abs(cfg['ghi']) if cfg.get('ghi') else None,
+        ghi=ghi,
         ghi_monthly=_ruta_abs(cfg['ghi_monthly']) if cfg.get('ghi_monthly') else None,
         ghi_unit=cfg.get('ghi_unit', 'kwh'),
         target_srid=target_srid, bounds_utm=bounds_utm,
@@ -81,25 +87,39 @@ def main():
     bounds_utm = pv.get('bounds_utm')
     umbral = pv.get('prob_min', 0.70)
 
-    aptitud_path = _ruta_abs('data/results/mapa_probabilidad_aptitud.tif')
+    aptitud_path = ruta_resultado(config, 'aptitud', 'mapa_probabilidad_aptitud.tif')
     if not os.path.exists(aptitud_path):
         print(f"  [OMITIDA] No existe el mapa de aptitud ({aptitud_path}). Corre el pipeline primero.")
         return 0
 
+    # Las tres variantes deben salir de la misma config, DEM y GHI para ser comparables.
+    prefijo = prefijo_rendimiento(config)
     try:
-        fijo = _asegurar_rendimiento(cfg, target_srid, bounds_utm, 'tilt', '_fijo', args.regenerar)
-        seguidor = _asegurar_rendimiento(cfg, target_srid, bounds_utm, 'tracker', '_seguidor', args.regenerar)
+        ghi = preparar_ghi(cfg, _ruta_abs)
+        entradas = [_ruta_abs(args.config), _ruta_abs(cfg['dem'])] + ([ghi] if ghi else [])
+        fijo = _asegurar_rendimiento(cfg, prefijo, target_srid, bounds_utm, 'tilt', '_fijo',
+                                     args.regenerar, entradas=entradas, ghi=ghi)
+        seguidor = _asegurar_rendimiento(cfg, prefijo, target_srid, bounds_utm, 'tracker',
+                                         '_seguidor', args.regenerar, entradas=entradas, ghi=ghi)
 
-        ruta_tilt0_esperada = _ruta_abs(cfg['out_prefix']) + '_fijo_tilt0_specific_yield.tif'
+        ruta_tilt0_esperada = prefijo + '_fijo_tilt0_specific_yield.tif'
         fijo_tilt0 = None
         if args.incluir_tilt0 or os.path.exists(ruta_tilt0_esperada):
-            fijo_tilt0 = _asegurar_rendimiento(cfg, target_srid, bounds_utm, 'tilt', '_fijo_tilt0', args.regenerar, tilt=0)
+            fijo_tilt0 = _asegurar_rendimiento(cfg, prefijo, target_srid, bounds_utm, 'tilt',
+                                               '_fijo_tilt0', args.regenerar, tilt=0,
+                                               entradas=entradas, ghi=ghi)
     except MotorNoDisponibleError as e:
         print(f"\n[MOTOR NO DISPONIBLE]\n{e}")
         return 2
+    except MotorSinCorreccionTileError as e:
+        print(f"\n[MOTOR SIN CORREGIR]\n{e}")
+        return 3
+    except FileNotFoundError as e:
+        print(f"\n[FALTA UN ARCHIVO DE ENTRADA]\n{e}")
+        return 4
 
     tamano_bloque_km = config.get('validacion', {}).get('tamano_bloque_km', 15)
-    out_json = _ruta_abs('data/results/comparacion_montaje.json')
+    out_json = ruta_resultado(config, 'rendimiento', 'comparacion_montaje.json')
     stats = comparar(fijo, seguidor, aptitud_path, umbral, out_json,
                      tamano_bloque_km=tamano_bloque_km, fijo_tilt0_path=fijo_tilt0)
 

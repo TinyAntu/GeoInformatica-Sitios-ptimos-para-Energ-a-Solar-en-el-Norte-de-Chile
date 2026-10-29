@@ -18,6 +18,7 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.cruce_aptitud_rendimiento import cruzar
+from src.rutas import ruta_resultado, prefijo_rendimiento
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -38,19 +39,13 @@ def main():
     # Rutas de entrada (mismas convenciones que el resto del pipeline). Ambos mapas deben
     # venir de la MISMA zona: cruzar la aptitud de una región con el rendimiento de otra
     # produciría un ranking sin correspondencia espacial.
-    dir_datos = 'data/results'
-    prefijo_rend = config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
-    if args.zona:
-        bloque = config.get(args.zona) or {}
-        if not bloque:
-            print(f"  [ERROR] config.yaml no tiene el bloque '{args.zona}'.")
-            return 1
-        dir_datos = bloque.get('dir_resultados', f'data/results/{args.zona}')
-        prefijo_rend = os.path.join(dir_datos, 'rendimiento')
+    if args.zona and not config.get(args.zona):
+        print(f"  [ERROR] config.yaml no tiene el bloque '{args.zona}'.")
+        return 1
 
-    aptitud_path = _ruta_abs(os.path.join(dir_datos, 'mapa_probabilidad_aptitud.tif'))
+    aptitud_path = ruta_resultado(config, 'aptitud', 'mapa_probabilidad_aptitud.tif', args.zona)
     # El montaje fijo es el caso base para el cruce (T3 agregará el seguidor).
-    rendimiento_path = _ruta_abs(prefijo_rend + '_fijo_specific_yield.tif')
+    rendimiento_path = prefijo_rendimiento(config, args.zona) + '_fijo_specific_yield.tif'
 
     # Umbral de aptitud: única fuente de verdad en postgis_validation.prob_min.
     umbral = config.get('postgis_validation', {}).get('prob_min', 0.70)
@@ -64,9 +59,9 @@ def main():
               "Genera primero con: python scripts/run_solar_yield.py --config config.yaml")
         return 0
 
-    out_en_aptas = _ruta_abs(os.path.join(dir_datos, 'rendimiento_en_aptas.tif'))
-    out_ranking = _ruta_abs(os.path.join(dir_datos, 'aptitud_x_rendimiento.tif'))
-    out_json = _ruta_abs(os.path.join(dir_datos, 'cruce_aptitud_rendimiento.json'))
+    out_en_aptas = ruta_resultado(config, 'cruce', 'rendimiento_en_aptas.tif', args.zona)
+    out_ranking = ruta_resultado(config, 'cruce', 'aptitud_x_rendimiento.tif', args.zona)
+    out_json = ruta_resultado(config, 'cruce', 'cruce_aptitud_rendimiento.json', args.zona)
 
     print(f"Cruzando aptitud (>= {umbral}) x rendimiento...")
     stats = cruzar(aptitud_path, rendimiento_path, umbral, out_en_aptas, out_ranking, out_json)

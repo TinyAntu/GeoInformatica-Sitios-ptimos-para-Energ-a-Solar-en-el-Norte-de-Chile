@@ -36,6 +36,7 @@ sys.path.append(directorio_raiz)
 from src.utils import _asegurar_proj_lib
 _asegurar_proj_lib()
 from src.preprocessing import _obtener_crs
+from src.rutas import ruta_resultado, prefijo_rendimiento
 
 MAX_PX = 1600  # lado máximo del PNG de salida (compromiso nitidez/tamaño)
 
@@ -49,8 +50,14 @@ def _ruta_abs(ruta: str) -> str:
     return ruta if os.path.isabs(ruta) else os.path.join(directorio_raiz, ruta)
 
 
-def _reproyectar_para_web(src_path, resampling=Resampling.bilinear, clip_mask_path=None):
-    """Reproyecta un raster a Web Mercator (EPSG:3857) remuestreado a MAX_PX."""
+def _reproyectar_para_web(src_path, resampling=Resampling.bilinear, clip_mask_path=None,
+                          nodata_fuente=None):
+    """Reproyecta un raster a Web Mercator (EPSG:3857) remuestreado a MAX_PX.
+
+    `nodata_fuente` reemplaza al nodata declarado en el ráster. El rendimiento del motor no
+    declara nodata y deja en 0 las celdas sin GHI: con `nodata_fuente=0` esas celdas quedan
+    transparentes y el bilineal no las mezcla con sus vecinas en el borde.
+    """
     crs_3857 = _obtener_crs(3857)
     crs_4326 = _obtener_crs(4326)
     with rasterio.open(src_path) as src:
@@ -65,7 +72,8 @@ def _reproyectar_para_web(src_path, resampling=Resampling.bilinear, clip_mask_pa
         destino = np.full((height, width), np.nan, dtype=np.float32)
         reproject(
             source=rasterio.band(src, 1), destination=destino,
-            src_transform=src.transform, src_crs=src_crs, src_nodata=src.nodata,
+            src_transform=src.transform, src_crs=src_crs,
+            src_nodata=src.nodata if nodata_fuente is None else nodata_fuente,
             dst_transform=dst_transform, dst_crs=crs_3857, dst_nodata=np.nan,
             resampling=resampling,
         )
@@ -145,46 +153,43 @@ def main():
     with open(_ruta_abs(args.config), 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
-    prefijo = config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
-
     # Con --zona todo se lee del directorio de esa zona y se escribe en assets/<zona>/ con un
     # manifest propio. Deliberadamente NO se mezcla con el manifest principal: así el visor
     # desplegado sigue funcionando aunque la zona no se haya calculado nunca.
-    dir_datos = 'data/results'
     sufijo = ''
     subdir = ''
     if args.zona:
-        bloque = config.get(args.zona) or {}
-        if not bloque:
+        if not config.get(args.zona):
             print(f"  [ERROR] config.yaml no tiene el bloque '{args.zona}'.")
             return 1
-        dir_datos = bloque.get('dir_resultados', f'data/results/{args.zona}')
-        prefijo = os.path.join(dir_datos, 'rendimiento')
         sufijo = f'_{args.zona}'
         subdir = args.zona
+    # Cada resultado en la subcarpeta de su tema, dentro de la zona si corresponde (src/rutas.py).
+    res = lambda tema, nombre: ruta_resultado(config, tema, nombre, args.zona)
+    prefijo = prefijo_rendimiento(config, args.zona)
 
     # Definición de capas. modo: 'fijo01' (0–1), 'percentil' (contraste p2–p98),
     # 'categorico' (consenso 0–3, oculta el 0 = no apto y usa resampleo nearest).
     capas = [
         # Los 3 perfiles de aptitud (Brecha 6).
-        {"id": "balanceado", "ruta": os.path.join(dir_datos, "mapa_probabilidad_aptitud.tif"),
+        {"id": "balanceado", "ruta": res("aptitud", "mapa_probabilidad_aptitud.tif"),
          "cmap": "viridis", "unidad": "Aptitud ML — probabilidad (0–1)", "modo": "fijo01"},
-        {"id": "conservador", "ruta": os.path.join(dir_datos, "aptitud_conservador.tif"),
+        {"id": "conservador", "ruta": res("aptitud", "aptitud_conservador.tif"),
          "cmap": "viridis", "unidad": "Aptitud conservador (0–1)", "modo": "fijo01"},
-        {"id": "agresivo", "ruta": os.path.join(dir_datos, "aptitud_agresivo.tif"),
+        {"id": "agresivo", "ruta": res("aptitud", "aptitud_agresivo.tif"),
          "cmap": "viridis", "unidad": "Aptitud agresivo (0–1)", "modo": "fijo01"},
         # Producción física y cruce.
         {"id": "rendimiento", "ruta": prefijo + "_fijo_specific_yield.tif",
          "cmap": "inferno", "unidad": "Rendimiento (kWh/kWp/año)", "modo": "percentil"},
-        {"id": "cruce", "ruta": os.path.join(dir_datos, "aptitud_x_rendimiento.tif"),
+        {"id": "cruce", "ruta": res("cruce", "aptitud_x_rendimiento.tif"),
          "cmap": "magma", "unidad": "Ranking aptitud × rendimiento (0–1)", "modo": "fijo01"},
         # Consenso/divergencia entre perfiles (Brecha 6, punto 4). cividis: secuencial y
         # ordinal, apta para daltonismo (reemplaza RdYlGn, ilegible en rojo-verde).
-        {"id": "consenso", "ruta": os.path.join(dir_datos, "consenso_perfiles.tif"),
+        {"id": "consenso", "ruta": res("aptitud", "consenso_perfiles.tif"),
          "cmap": "cividis", "unidad": "Perfiles aptos: 1 → 3 (3 = consenso)", "modo": "categorico"},
         # Variable dominante por píxel según SHAP (Brecha 8). Orden = FEATURES.
         # Okabe-Ito: categórica nominal, apta para daltonismo (reemplaza tab10).
-        {"id": "dominante", "ruta": os.path.join(dir_datos, "shap_espacial_dominante.tif"),
+        {"id": "dominante", "ruta": res("explicabilidad", "shap_espacial_dominante.tif"),
          "cmap": "okabe_ito_gs", "unidad": "Variable dominante (SHAP)", "modo": "categorias",
          "categorias": ["Pendiente", "GHI", "Elevación", "Northness",
                         "Dist. transmisión", "Dist. almacenam.", "Dist. subestaciones"]},
@@ -206,11 +211,13 @@ def main():
         # Los mapas categóricos se remuestrean con nearest (no interpolar entre categorías).
         es_categorico = modo in ("categorico", "categorias")
         resampling = Resampling.nearest if es_categorico else Resampling.bilinear
-        mascara = None
+        mascara, nodata_fuente = None, None
         if cid == "rendimiento":
-            mascara = _ruta_abs(os.path.join(dir_datos, "mapa_probabilidad_aptitud.tif"))
+            mascara = res("aptitud", "mapa_probabilidad_aptitud.tif")
+            nodata_fuente = 0.0  # 0 = sin dato de GHI observado en el motor
         arr, (sur, oeste, norte, este) = _reproyectar_para_web(
             src_path, resampling=resampling, clip_mask_path=mascara,
+            nodata_fuente=nodata_fuente,
         )
 
         valido = arr[np.isfinite(arr)]
@@ -256,21 +263,21 @@ def main():
     stats = {}
     if args.zona:
         fuentes = {
-            "transferibilidad": os.path.join(dir_datos, "metricas_transferibilidad.json"),
-            "consenso": os.path.join(dir_datos, "consenso_perfiles.json"),
-            "shap_espacial": os.path.join(dir_datos, "shap_espacial.json"),
-            "cruce": os.path.join(dir_datos, "cruce_aptitud_rendimiento.json"),
+            "transferibilidad": res("transferibilidad", "metricas_transferibilidad.json"),
+            "consenso": res("aptitud", "consenso_perfiles.json"),
+            "shap_espacial": res("explicabilidad", "shap_espacial.json"),
+            "cruce": res("cruce", "cruce_aptitud_rendimiento.json"),
         }
     else:
         fuentes = {
-            "cruce": "data/results/cruce_aptitud_rendimiento.json",
-            "comparacion_montaje": "data/results/comparacion_montaje.json",
-            "shap": "data/results/shap_importancias.json",
-            "consenso": "data/results/consenso_perfiles.json",
-            "shap_espacial": "data/results/shap_espacial.json",
+            "cruce": res("cruce", "cruce_aptitud_rendimiento.json"),
+            "comparacion_montaje": res("rendimiento", "comparacion_montaje.json"),
+            "shap": res("explicabilidad", "shap_importancias.json"),
+            "consenso": res("aptitud", "consenso_perfiles.json"),
+            "shap_espacial": res("explicabilidad", "shap_espacial.json"),
             # Necesario para dibujar los puntos A y B del gradiente de generalización en la
             # pestaña de transferencia: son las cifras del norte, no de la zona evaluada.
-            "metricas_topk": "data/results/metricas_topk.json",
+            "metricas_topk": res("modelo", "metricas_topk.json"),
         }
     for clave, ruta in fuentes.items():
         p = _ruta_abs(ruta)

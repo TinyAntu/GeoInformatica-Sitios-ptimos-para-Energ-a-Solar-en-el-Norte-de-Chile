@@ -73,16 +73,16 @@
     "colorbar": "assets/transferibilidad/rendimiento_colorbar.png",
     "bounds": [
       [
-        -32.3083330806566,
-        -71.80939384662088
+        -32.30941757296775,
+        -71.80942720407498
       ],
       [
         -29.013259811240534,
-        -69.77953332166645
+        -69.77922522769924
       ]
     ],
-    "vmin": 691.31,
-    "vmax": 1976.75,
+    "vmin": 1470.1,
+    "vmax": 2117.93,
     "unidad": "Rendimiento (kWh/kWp/año)",
     "cmap": "inferno",
     "categorias": null,

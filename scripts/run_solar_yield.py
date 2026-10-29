@@ -23,8 +23,10 @@ import yaml
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
-from src.solar_yield import generar_mapa_rendimiento, MotorNoDisponibleError
+from src.solar_yield import (generar_mapa_rendimiento, MotorNoDisponibleError,
+                             MotorSinCorreccionTileError, preparar_ghi)
 from src.utils import _esta_actualizado
+from src.rutas import prefijo_rendimiento
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -76,9 +78,14 @@ def main():
             return 1
         cfg = dict(cfg)
         cfg['dem'] = bloque.get('dem', cfg['dem'])
-        dir_res = bloque.get('dir_resultados', f'data/results/{args.zona}')
-        os.makedirs(_ruta_abs(dir_res), exist_ok=True)
-        cfg['out_prefix'] = os.path.join(dir_res, 'rendimiento')
+        # El GHI observado debe calzar con el DEM de la zona: no se reutiliza el del norte.
+        if cfg.get('ghi'):
+            if not bloque.get('ghi'):
+                print(f"ERROR: solarpv usa GHI observado, pero el bloque '{args.zona}' no "
+                      "declara su 'ghi' alineado a su DEM. Mezclar zonas con y sin GHI "
+                      "haría incomparables sus rendimientos.")
+                return 1
+            cfg['ghi'] = bloque['ghi']
         for clave in ('lat', 'lon'):
             if bloque.get(clave) is not None:
                 cfg[clave] = bloque[clave]
@@ -92,14 +99,23 @@ def main():
     else:
         sufijo = '_seguidor'
 
-    out_prefix = _ruta_abs(cfg['out_prefix']) + sufijo
+    out_prefix = prefijo_rendimiento(config, args.zona) + sufijo
 
     # El motor puede tardar minutos u horas (ver README): se salta si el rendimiento ya
     # existe y está más nuevo que el DEM y la config, igual que hace run_comparacion_montaje.py
     # (_asegurar_rendimiento) y run_pipeline.py para esta misma etapa.
     dem_path = _ruta_abs(cfg['dem'])
+    if args.dry_run:
+        ghi_path = _ruta_abs(cfg['ghi']) if cfg.get('ghi') else None
+    else:
+        try:
+            ghi_path = preparar_ghi(cfg, _ruta_abs)
+        except FileNotFoundError as e:
+            print(f"\n[FALTA EL GHI]\n{e}")
+            return 4
     salida_esperada = f"{out_prefix}_specific_yield.tif"
-    if not args.regenerar and not args.dry_run and _esta_actualizado([ruta_config, dem_path], [salida_esperada]):
+    entradas = [ruta_config, dem_path] + ([ghi_path] if ghi_path else [])
+    if not args.regenerar and not args.dry_run and _esta_actualizado(entradas, [salida_esperada]):
         print(f"  [OK] Ya existe y está actualizado: {salida_esperada} (usa --regenerar para forzar)")
         return 0
 
@@ -117,7 +133,7 @@ def main():
             gcr=montaje.get('gcr'),
             tile=cfg.get('tile'),
             horizon_radius=cfg.get('horizon_radius'),
-            ghi=_ruta_abs(cfg['ghi']) if cfg.get('ghi') else None,
+            ghi=ghi_path,
             ghi_monthly=_ruta_abs(cfg['ghi_monthly']) if cfg.get('ghi_monthly') else None,
             ghi_unit=cfg.get('ghi_unit', 'kwh'),
             target_srid=target_srid,
@@ -129,6 +145,9 @@ def main():
         # Bloqueo esperado si el motor no está compilado: mensaje accionable, no traceback.
         print(f"\n[MOTOR NO DISPONIBLE]\n{e}")
         return 2
+    except MotorSinCorreccionTileError as e:
+        print(f"\n[MOTOR SIN CORREGIR]\n{e}")
+        return 3
 
     print(f"\nRendimiento ({args.mount}) listo en: {salida}")
     return 0

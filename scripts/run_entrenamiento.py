@@ -19,14 +19,19 @@ import sys
 import argparse
 
 import yaml
+import geopandas as gpd
 
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.preprocessing import cargar_capas_vectoriales
+from src.infraestructura import (
+    control_fuga_activo, generar_capas_sin_dedicadas, rutas_vectores_efectivas,
+)
 from src.sampling import generar_dataset_muestras
 from src.modeling import entrenar_modelo_rf
 from src.utils import _esta_actualizado, _resolver_rutas, _ruta_abs, _shapefile_paths
+from src.rutas import dir_figuras
 
 
 def entradas_esperadas(config, ruta_config: str) -> list:
@@ -40,7 +45,10 @@ def entradas_esperadas(config, ruta_config: str) -> list:
         processed['aspect'],
         processed['dem_32719'],
     ]
+    # Las capas crudas siempre (la red completa decide el criterio de pseudo-ausencias) y,
+    # con control de fuga, también las capas sin dedicadas que ve el modelo.
     entradas.extend(config['paths']['raw']['vectores'].values())
+    entradas.extend(v for v in rutas_vectores_efectivas(config).values() if v not in entradas)
     return entradas
 
 
@@ -78,8 +86,18 @@ def main():
     if model_out:
         os.makedirs(os.path.dirname(model_out), exist_ok=True)
 
-    vectores = cargar_capas_vectoriales(config['paths']['raw']['vectores'])
+    # Control de fuga (src/infraestructura.py): el modelo ve la red sin infraestructura
+    # dedicada, pero el criterio de pseudo-ausencias se mide contra la red completa para
+    # conservar exactamente los mismos puntos de entrenamiento.
+    if control_fuga_activo(config):
+        generar_capas_sin_dedicadas(config)  # se omite sola si la etapa 1-2 ya las dejó al día
+    vectores = cargar_capas_vectoriales(rutas_vectores_efectivas(config))
     print(f"Se cargaron {len(vectores)} capas vectoriales.")
+    lineas_criterio = None
+    if control_fuga_activo(config):
+        print("  Control de fuga activo: variables sin infraestructura dedicada; criterio "
+              "de pseudo-ausencias contra la red completa.")
+        lineas_criterio = gpd.read_file(config['paths']['raw']['vectores']['lineas'])
 
     processed = config['paths']['processed']
     rutas_rasters = {
@@ -94,6 +112,7 @@ def main():
         vectores, rutas_rasters, config['criterios'],
         ratio=ml['ratio_negativos'],
         random_state=ml['random_state'],
+        lineas_criterio=lineas_criterio,
     )
     entrenar_modelo_rf(
         positivas=positivas,
@@ -112,6 +131,7 @@ def main():
         regiones_gdf=vectores['regiones'][
             vectores['regiones']['REGION'].isin(['Antofagasta', 'Atacama'])
         ],
+        figures_dir=dir_figuras(config, 'modelo'),
     )
     return 0
 

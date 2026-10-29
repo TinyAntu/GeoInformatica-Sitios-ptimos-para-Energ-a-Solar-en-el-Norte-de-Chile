@@ -25,6 +25,7 @@ from rasterio.features import rasterize
 from sklearn.ensemble import RandomForestClassifier
 
 from src.features import FEATURES
+from src.rutas import ruta_resultado
 
 # Barrido de K por defecto. Incluye obligatoriamente 1 y 3 —los dos que PEP1 comprometió y
 # que busca contrastar_con_umbrales_pep1 por nombre de clave— y añade puntos intermedios
@@ -295,7 +296,9 @@ _CACHE_GRILLA = {}
 
 
 def _grilla_features(config, resolucion_m):
-    vectores = config['paths']['raw']['vectores']
+    # Rutas efectivas: las que realmente usa _construir_features (control de fuga incluido).
+    from src.infraestructura import rutas_vectores_efectivas
+    vectores = rutas_vectores_efectivas(config)
     clave = (resolucion_m, vectores['lineas'], vectores['almacenamiento'], vectores['subestaciones'])
     if clave not in _CACHE_GRILLA:
         from src.explainability_spatial import _construir_features
@@ -333,7 +336,7 @@ def evaluar_mapa_entregado(config, directorio_raiz, ks=KS_DEFECTO, ha_por_mw=Non
     Es la cifra del producto final, pero es IN-SAMPLE: las 105 plantas entrenaron el modelo
     que generó este mapa (PEP1 §6.3 reentrena al 100% para la etapa cartográfica).
     """
-    ruta_mapa = _ruta(directorio_raiz, 'data/results/mapa_probabilidad_aptitud.tif')
+    ruta_mapa = ruta_resultado(config, 'aptitud', 'mapa_probabilidad_aptitud.tif')
     if not os.path.exists(ruta_mapa):
         raise FileNotFoundError(f"No existe el mapa de aptitud: {ruta_mapa}")
 

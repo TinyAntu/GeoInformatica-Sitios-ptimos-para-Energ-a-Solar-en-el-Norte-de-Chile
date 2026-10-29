@@ -29,6 +29,7 @@ sys.path.append(directorio_raiz)
 from scripts.generar_figuras_informe import (
     renderizar_mapa, calcular_percentil_combinado, OKABE_ITO,
 )
+from src.rutas import ruta_resultado, ruta_figura, dir_figuras, prefijo_rendimiento
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -50,9 +51,10 @@ def main():
 
     nombres = bloque['regiones']
     etiqueta_zona = ' + '.join(nombres)
-    results_dir = _ruta_abs(bloque.get('dir_resultados', f'data/results/{args.zona}'))
-    figures_dir = _ruta_abs(bloque.get('dir_figuras', f'figures/{args.zona}'))
-    os.makedirs(figures_dir, exist_ok=True)
+    # Entradas y figuras en la subcarpeta de su tema, dentro de la zona (ver src/rutas.py).
+    res = lambda tema, nombre: ruta_resultado(config, tema, nombre, args.zona)
+    fig = lambda tema, nombre: ruta_figura(config, tema, nombre, args.zona)
+    figures_dir = os.path.dirname(dir_figuras(config, 'aptitud', args.zona))
 
     regiones = gpd.read_file(_ruta_abs(config['paths']['raw']['vectores']['regiones']))
     regiones = regiones[regiones['REGION'].isin(nombres)].to_crs(epsg=32719)
@@ -80,7 +82,9 @@ def main():
          'AOA (1 = aplicable / fiable, 0 = extrapolación)', 'mapa_aoa.png', 'viridis'),
     ]
     for tif, titulo, etiqueta, png, cmap in mapas:
-        ruta = os.path.join(results_dir, tif)
+        # DI y AOA son diagnósticos de la transferencia; los demás, mapas de aptitud.
+        tema = 'transferibilidad' if tif in ('di.tif', 'aoa.tif') else 'aptitud'
+        ruta = res(tema, tif)
         if not os.path.exists(ruta):
             print(f"  [AVISO] No existe {ruta}; se omite.")
             continue
@@ -88,7 +92,7 @@ def main():
         nota = nota_modelo if (tif.startswith('mapa_probabilidad') or tif in ('di.tif', 'aoa.tif')) else None
         vmax_val = None if tif == 'di.tif' else 1.0
         vmin_val = 0.0
-        renderizar_mapa(ruta, titulo, etiqueta, os.path.join(figures_dir, png), regiones,
+        renderizar_mapa(ruta, titulo, etiqueta, fig(tema, png), regiones,
                         cmap=cmap, vmin=vmin_val, vmax=vmax_val, nota_extra=nota,
                         recortar_a_regiones=True)
 
@@ -96,27 +100,29 @@ def main():
     # Escala por percentiles p2-p98 sobre la propia zona, NO compartida con la zona de
     # estudio: son rangos de latitud distintos y forzar una escala común aplastaría el
     # contraste interno de la región más homogénea. Se declara en el pie de la figura.
-    tif_rend = os.path.join(results_dir, 'rendimiento_fijo_specific_yield.tif')
+    tif_rend = prefijo_rendimiento(config, args.zona) + '_fijo_specific_yield.tif'
     if os.path.exists(tif_rend):
-        vmin_r, vmax_r = calcular_percentil_combinado([tif_rend], regiones=regiones)
+        vmin_r, vmax_r = calcular_percentil_combinado([tif_rend], regiones=regiones,
+                                                      excluir_sin_ghi=True)
         renderizar_mapa(tif_rend,
                         f'Rendimiento fotovoltaico en {etiqueta_zona} — montaje fijo (tilt 23°)',
                         'Rendimiento (kWh/kWp/año)',
-                        os.path.join(figures_dir, 'mapa_rendimiento_fijo.png'), regiones,
+                        fig('rendimiento', 'mapa_rendimiento_fijo.png'), regiones,
                         cmap='plasma', vmin=vmin_r, vmax=vmax_r,
-                        nota_extra="Motor: solarpv-rs, grilla 300 m. Escala p2–p98 propia de "
-                                   "esta zona (no comparable en color con otras regiones).",
-                        recortar_a_regiones=True)
+                        nota_extra="Motor: solarpv-rs con GHI observado, grilla 90 m. En blanco: "
+                                   "sin dato de GHI. Escala p2–p98 propia de esta zona (no "
+                                   "comparable en color con otras regiones).",
+                        recortar_a_regiones=True, excluir_sin_ghi=True)
     else:
         print("  [AVISO] No existe el mapa de rendimiento; corre run_zona.py sin --sin-motor.")
 
     # --- Cruce aptitud x rendimiento ---
-    tif_cruce = os.path.join(results_dir, 'aptitud_x_rendimiento.tif')
+    tif_cruce = res('cruce', 'aptitud_x_rendimiento.tif')
     if os.path.exists(tif_cruce):
         renderizar_mapa(tif_cruce,
                         f'Ranking combinado en {etiqueta_zona}: aptitud × rendimiento físico',
                         'Score combinado (0–1)',
-                        os.path.join(figures_dir, 'mapa_cruce_aptitud_rendimiento.png'), regiones,
+                        fig('cruce', 'mapa_cruce_aptitud_rendimiento.png'), regiones,
                         cmap='magma', vmin=0.0, vmax=1.0,
                         nota_extra="Score = probabilidad RF × rendimiento normalizado (p1–p99). "
                                    + nota_modelo,
@@ -125,13 +131,13 @@ def main():
         print("  [AVISO] No existe el cruce aptitud×rendimiento.")
 
     # --- Consenso entre perfiles ---
-    tif_consenso = os.path.join(results_dir, 'consenso_perfiles.tif')
+    tif_consenso = res('aptitud', 'consenso_perfiles.tif')
     if os.path.exists(tif_consenso):
         colores = [to_hex(plt.get_cmap('cividis')(t)) for t in (0.0, 0.5, 1.0)]
         renderizar_mapa(tif_consenso,
                         f'Consenso vs. divergencia entre perfiles — {etiqueta_zona}',
                         'Perfiles que consideran apta la celda',
-                        os.path.join(figures_dir, 'mapa_consenso_perfiles.png'), regiones,
+                        fig('aptitud', 'mapa_consenso_perfiles.png'), regiones,
                         discreto=True, vmin=1, vmax=3,
                         categorias=['1 perfil (divergencia)', '2 perfiles (divergencia)',
                                     '3 perfiles (consenso)'],
@@ -142,14 +148,14 @@ def main():
         print("  [AVISO] No existe el mapa de consenso.")
 
     # --- Variable dominante SHAP ---
-    tif_dom = os.path.join(results_dir, 'shap_espacial_dominante.tif')
+    tif_dom = res('explicabilidad', 'shap_espacial_dominante.tif')
     if os.path.exists(tif_dom):
         etiquetas = ['Pendiente', 'GHI', 'Elevación', 'Northness',
                      'Dist. transmisión', 'Dist. almacenam.', 'Dist. subestaciones']
         renderizar_mapa(tif_dom,
                         f'Variable dominante en la decisión de aptitud — {etiqueta_zona}',
                         'Variable con mayor |SHAP|',
-                        os.path.join(figures_dir, 'mapa_shap_dominante.png'), regiones,
+                        fig('explicabilidad', 'mapa_shap_dominante.png'), regiones,
                         discreto=True, vmin=0, vmax=6,
                         categorias=etiquetas, colores_discretos=OKABE_ITO[:7],
                         nota_extra="TreeExplainer sobre model_rf.pkl (sin reentrenar).",

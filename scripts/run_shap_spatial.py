@@ -18,6 +18,7 @@ sys.path.append(directorio_raiz)
 
 from src.explainability_spatial import generar_mapas_shap
 from src.utils import _esta_actualizado
+from src.rutas import dir_resultados, dir_figuras
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -32,14 +33,14 @@ def main():
     parser.add_argument('--zona', default=None,
                         help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"). '
                              'Sin este flag explica la zona de entrenamiento y escribe en '
-                             'data/results, como siempre.')
+                             'data/results/explicabilidad/, como siempre.')
     args = parser.parse_args()
 
     ruta_config = _ruta_abs(args.config)
     with open(ruta_config, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
-    model_path = _ruta_abs(config['paths']['results'].get('model_rf', 'data/results/model_rf.pkl'))
+    model_path = _ruta_abs(config['paths']['results']['model_rf'])
     if not os.path.exists(model_path):
         print(f"  [ERROR] No existe el modelo ({model_path}). Corre el pipeline primero.")
         return 1
@@ -47,9 +48,6 @@ def main():
     cfg = config.get('shap_espacial', {})
     resolucion_m = cfg.get('resolucion_m', 500)
     top_n = cfg.get('top_sitios', 5)
-    out_dir = _ruta_abs('data/results')
-    figures_dir = _ruta_abs('figures')
-
     # Con --zona todo se redirige a directorios propios: los nombres de salida son fijos y
     # escribir otra región en data/results sobrescribiría los artefactos del norte.
     zona = None
@@ -61,10 +59,8 @@ def main():
             return 1
         zona = zona_de_config(config, args.zona)
         resolucion_m = bloque.get('resolucion_m', resolucion_m)
-        out_dir = _ruta_abs(bloque.get('dir_resultados', f'data/results/{args.zona}'))
-        figures_dir = _ruta_abs(bloque.get('dir_figuras', f'figures/{args.zona}'))
-        os.makedirs(out_dir, exist_ok=True)
-        os.makedirs(figures_dir, exist_ok=True)
+    out_dir = dir_resultados(config, 'explicabilidad', args.zona)
+    figures_dir = dir_figuras(config, 'explicabilidad', args.zona)
 
     # Esta etapa es la más cara del pipeline (millones de píxeles vía TreeExplainer): se
     # salta si el resultado ya es más nuevo que el modelo y la config, igual que cuando

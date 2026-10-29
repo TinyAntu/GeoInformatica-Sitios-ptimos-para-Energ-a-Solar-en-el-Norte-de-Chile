@@ -91,6 +91,36 @@ class TestCruce(unittest.TestCase):
             disco = json.load(f)
         self.assertEqual(disco["celdas_aptas"], stats["celdas_aptas"])
 
+    def test_excluye_celdas_sin_ghi(self):
+        """Celdas con rendimiento 0 (sin GHI observado en el motor) quedan fuera del cruce."""
+        rend = self.rend.copy()
+        rend[1, 0] = 0.0                      # apta (0.80) sin GHI
+        rend[0, 3] = 0.0                      # no apta (0.30) sin GHI
+        self.rend_path = _escribir(os.path.join(self.dir, "rend0.tif"), rend)
+        _, _, _, stats = self._correr()
+        validas = (self.apt != NODATA) & (rend > 0)
+        self.assertEqual(stats["celdas_excluidas_sin_ghi"], 2)
+        self.assertEqual(stats["celdas_validas"], int(validas.sum()))
+        self.assertEqual(stats["celdas_aptas"], int((validas & (self.apt >= 0.70)).sum()))
+        self.assertGreater(stats["rendimiento_region"]["min"], 0)
+
+    def test_borde_sin_ghi_no_se_mezcla_al_reproyectar(self):
+        """Con grillas desfasadas, el 0 (sin GHI) no se promedia con celdas válidas.
+
+        El rendimiento está corrido 1/4 de celda: la primera columna de la aptitud cae 75 %
+        sobre una columna sin GHI y 25 % sobre una de 2000. Promediando el 0 saldría 500, un
+        rendimiento falso que el filtro `<= 0` no atrapa; debe quedar como "sin GHI".
+        """
+        rend = np.full((5, 5), 2000.0, dtype="float32")
+        rend[:, 0] = 0.0
+        self.rend_path = _escribir(os.path.join(self.dir, "rend_desfasado.tif"), rend,
+                                   origin=(299750, 7010250))
+        _, _, _, stats = self._correr()
+        columna_sin_ghi = (self.apt[:, 0] != NODATA)
+        self.assertEqual(stats["celdas_excluidas_sin_ghi"], int(columna_sin_ghi.sum()))
+        self.assertAlmostEqual(stats["rendimiento_region"]["min"], 2000.0, places=1)
+        self.assertAlmostEqual(stats["rendimiento_region"]["max"], 2000.0, places=1)
+
     def test_sin_celdas_comunes_lanza(self):
         # Rendimiento en una extensión disjunta: no hay solape -> ValueError.
         rend_lejos = _escribir(os.path.join(self.dir, "rend_lejos.tif"),

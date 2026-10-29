@@ -3,13 +3,15 @@
 Cubre las etapas 1 y 2 del pipeline:
     1. Fusiona las teselas DEM, reproyecta a EPSG:32719 y deriva slope/aspect con surtgis.
     2. Reproyecta el GHI a EPSG:32719.
+    2b. Con `control_fuga.excluir_dedicadas`, escribe las capas de subestaciones, líneas y
+        almacenamiento sin infraestructura dedicada (src/infraestructura.py).
 
-Deliberadamente NO carga las capas vectoriales: ninguna de las dos etapas las necesita, y
-cargarlas aquí las dejaría residentes sin motivo (ese era el costo que pagaba el orquestador
-antes de separar esta fase, ver scripts/run_pipeline.py).
+Solo el paso 2b lee capas vectoriales (las tres de infraestructura), y las libera al
+terminar: este script corre en su propio proceso (ver scripts/run_pipeline.py).
 
-La idempotencia vive dentro de `procesar_dem` y `reproject_raster_to_utm`: ambas se omiten
-solas si sus salidas ya existen, así que este script no replica el chequeo.
+La idempotencia vive dentro de `procesar_dem`, `reproject_raster_to_utm` y
+`generar_capas_sin_dedicadas`: las tres se omiten solas si sus salidas están al día, así que
+este script no replica el chequeo.
 
 Uso:
     python scripts/run_preprocesamiento.py --config config.yaml
@@ -25,6 +27,7 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.preprocessing import procesar_dem, reproject_raster_to_utm
+from src.infraestructura import control_fuga_activo, generar_capas_sin_dedicadas
 from src.utils import _resolver_rutas, _ruta_abs
 
 
@@ -53,6 +56,14 @@ def main():
     # --- Etapa 2: Reproyección GHI ---
     print("\n--- Etapa 2: Reproyección GHI a EPSG:32719 ---")
     reproject_raster_to_utm(rasters_raw['ghi'], processed['ghi_32719'], epsg_code=32719)
+
+    # --- Etapa 2b: capas de infraestructura sin dedicadas (control de fuga) ---
+    if control_fuga_activo(config):
+        print("\n--- Etapa 2b: Capas de infraestructura sin dedicadas (control de fuga) ---")
+        generar_capas_sin_dedicadas(config)
+    else:
+        print("\n[AVISO] control_fuga.excluir_dedicadas = false: el pipeline usa la red completa, "
+              "incluida la infraestructura dedicada a las propias plantas (con fuga).")
 
     print("\nPreprocesamiento completo.")
     return 0

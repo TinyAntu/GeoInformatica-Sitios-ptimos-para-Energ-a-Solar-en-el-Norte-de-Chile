@@ -9,7 +9,7 @@ completa en src/auditoria_infraestructura.py.
 
 No modifica ningún artefacto del pipeline (model_rf.pkl, dataset, mapas): todo lo que
 produce (JSON, tabla comparativa CSV, figuras y capas filtradas) queda en una sola carpeta,
-`auditoria_infraestructura.dir_resultados` (por defecto data/results/auditoria_infraestructura/).
+`auditoria_infraestructura.dir_resultados` (por defecto data/results/analisis/auditoria_infraestructura/).
 
 Uso:
     python scripts/run_auditoria_infraestructura.py --config config.yaml
@@ -38,11 +38,13 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.utils import _esta_actualizado, _resolver_rutas, _ruta_abs, _shapefile_paths
+from src.rutas import ruta_resultado, dir_analisis
 from src.spatial_validation import asignar_region_a_muestras
 from src.auditoria_infraestructura import (
     CAPA_POR_FEATURE,
     EXPERIMENTOS,
     variantes_del_experimento,
+    experimento_del_pipeline,
     tiene_mapa,
     asignar_tipo_por_subestacion,
     preparar_infraestructura,
@@ -87,7 +89,8 @@ def ruta_salida(config, optimizar=False) -> str:
     """JSON de resultados. El anexo Optuna vive en su propia subcarpeta, separado del
     estudio con hiperparámetros fijos, para poder comparar ambos sin pisarse."""
     bloque = config.get('auditoria_infraestructura') or {}
-    directorio = _ruta_abs(bloque.get('dir_resultados', 'data/results/auditoria_infraestructura'))
+    directorio = (_ruta_abs(bloque['dir_resultados']) if bloque.get('dir_resultados')
+                  else dir_analisis(config, 'auditoria_infraestructura'))
     if optimizar:
         return os.path.join(directorio, SUBCARPETA_OPTUNA, 'ablacion_infraestructura_optuna.json')
     return os.path.join(directorio, 'ablacion_infraestructura.json')
@@ -112,6 +115,20 @@ def _params_rf(config) -> dict:
             'min_samples_leaf': best['min_samples_leaf'], 'class_weight': 'balanced'}
 
 
+def _params_fijos(config, params_pipeline: dict) -> dict:
+    """Hiperparámetros del estudio sin --optimizar.
+
+    Se fijan en config.yaml (auditoria_infraestructura.hiperparametros_fijos) porque el
+    estudio mide la fuga del modelo original: si siguieran a model_rf_metrics.json, cada
+    reentrenamiento del pipeline cambiaría las cifras de la ablación ya publicada.
+    """
+    fijos = (config.get('auditoria_infraestructura') or {}).get('hiperparametros_fijos')
+    if not fijos:
+        return params_pipeline
+    return {'n_estimators': int(fijos['n_estimators']), 'max_depth': int(fijos['max_depth']),
+            'min_samples_leaf': int(fijos['min_samples_leaf']), 'class_weight': 'balanced'}
+
+
 def _recall_loro_cartografico(config, muestras, params_rf, capas, experimento, dir_salida,
                               random_state):
     """Recall LORO top-K sobre el mapa, con las capas filtradas del experimento.
@@ -123,6 +140,10 @@ def _recall_loro_cartografico(config, muestras, params_rf, capas, experimento, d
     from src.metricas_topk import evaluar_por_region
 
     config_experimento = copy.deepcopy(config)
+    # La auditoría decide ella misma qué capas ve cada experimento (incluida la red completa
+    # de 'linea_base'): se desactiva el control de fuga del pipeline en esta copia, o
+    # rutas_vectores_efectivas() reemplazaría las capas del experimento por las sin dedicadas.
+    config_experimento['control_fuga'] = {'excluir_dedicadas': False}
     for feature, variante in variantes_del_experimento(experimento).items():
         if variante == 'todas':
             continue
@@ -145,15 +166,21 @@ def _recall_loro_cartografico(config, muestras, params_rf, capas, experimento, d
 
 
 def _controlar_recall_publicado(config, recall_linea_base, estricto=True):
-    """La línea base cartográfica debe reproducir out_of_sample_loro de metricas_topk.json.
+    """El experimento equivalente al pipeline debe reproducir out_of_sample_loro de
+    metricas_topk.json (`recall_linea_base` es su recall cartográfico).
 
-    Solo es exigible (`estricto`) cuando la línea base usa los mismos hiperparámetros que el
-    pipeline. En el anexo Optuna, si la búsqueda eligiera otros, la diferencia se registra
+    Solo es exigible (`estricto`) cuando ese experimento usa los mismos hiperparámetros que
+    el pipeline. En el anexo Optuna, si la búsqueda eligiera otros, la diferencia se registra
     como resultado en vez de abortar.
     """
-    ruta = _ruta_abs('data/results/metricas_topk.json')
+    ruta = ruta_resultado(config, 'modelo', 'metricas_topk.json')
     if not os.path.exists(ruta):
         print("  [AVISO] No existe metricas_topk.json: se omite el control cartográfico.")
+        return None
+    # Si metricas_topk.json es anterior al modelo, lo produjo un modelo que ya no existe.
+    if os.path.getmtime(ruta) < os.path.getmtime(config['paths']['results']['model_rf']):
+        print("  [AVISO] metricas_topk.json es anterior a model_rf.pkl (falta correr la fase 4): "
+              "se omite el control cartográfico.")
         return None
     with open(ruta, 'r', encoding='utf-8') as f:
         publicado = json.load(f)['out_of_sample_loro']['combinado_por_k']
@@ -393,7 +420,8 @@ def main():
 
     print("Cargando dataset de entrenamiento, infraestructura y plantas...")
     muestras = _cargar_muestras(config)
-    params_fijos = _params_rf(config)
+    params_pipeline = _params_rf(config)
+    params_fijos = _params_fijos(config, params_pipeline)
     crudas = {nombre: gpd.read_file(vectores[nombre]) for nombre in CAPA_POR_FEATURE.values()}
     # El almacenamiento no trae TIPO: se hereda de la subestación a la que se conecta.
     crudas['almacenamiento'] = asignar_tipo_por_subestacion(crudas['almacenamiento'],
@@ -423,7 +451,8 @@ def main():
                        "misma semilla, mismo espacio de búsqueda, Brier SBCV).")
     else:
         descripcion = ("Ablación de las distancias a la red: mismos 420 puntos, mismas otras "
-                       "variables y mismos hiperparámetros (model_rf_metrics.json); solo "
+                       "variables y mismos hiperparámetros (los del modelo original, fijados "
+                       "en auditoria_infraestructura.hiperparametros_fijos); solo "
                        "cambia qué subestaciones, líneas y almacenamiento se consideran.")
     resultado = {
         'descripcion': descripcion,
@@ -447,18 +476,24 @@ def main():
             distancias[(feature, variante)] = distancia_a_infraestructura(
                 muestras, capas[nombre_capa], variante, fechas['fecha_ref'], margen_meses)
 
-    # Control: la línea base debe reproducir las variables del dataset, o la comparación
-    # entre experimentos mediría también un error de cálculo.
+    # Control: el experimento equivalente al pipeline debe reproducir las variables del
+    # dataset, o la comparación entre experimentos mediría también un error de cálculo.
+    # Con control de fuga activo, el dataset del pipeline es 'tres_sin_dedicadas'; sin él,
+    # 'linea_base' (ver experimento_del_pipeline).
+    exp_pipeline = experimento_del_pipeline(config)
+    resultado['experimento_equivalente_al_pipeline'] = exp_pipeline
     resultado['control_reconstruccion_max_dif_m'] = {}
-    for feature in CAPA_POR_FEATURE:
-        diferencia = float(np.nanmax(np.abs(distancias[(feature, 'todas')]
+    for feature, variante in variantes_del_experimento(exp_pipeline).items():
+        diferencia = float(np.nanmax(np.abs(distancias[(feature, variante)]
                                             - muestras[feature].values)))
         resultado['control_reconstruccion_max_dif_m'][feature] = round(diferencia, 3)
-        print(f"  Control {feature}: diferencia máxima con el dataset = {diferencia:.3f} m")
+        print(f"  Control {feature} ({exp_pipeline}): diferencia máxima con el dataset = "
+              f"{diferencia:.3f} m")
         if diferencia > TOLERANCIA_DISTANCIA_M:
             raise RuntimeError(
-                f"La variante 'todas' no reproduce {feature} del dataset (diferencia máx "
-                f"{diferencia:.1f} m): la ablación no sería comparable.")
+                f"'{exp_pipeline}' no reproduce {feature} del dataset del pipeline (diferencia "
+                f"máx {diferencia:.1f} m): la ablación no sería comparable. ¿Se reentrenó el "
+                f"pipeline con el control_fuga actual?")
 
     muestras_por_experimento = {}
     params_por_experimento = {}
@@ -489,13 +524,13 @@ def main():
         resultado['experimentos'][experimento] = evaluacion
 
     if args.optimizar:
-        # Control de reproducibilidad: la línea base es el mismo problema que optimizó el
-        # pipeline, así que con la misma semilla debería elegir los mismos hiperparámetros.
-        reproduce = params_por_experimento['linea_base'] == params_fijos
-        resultado['control_optuna_linea_base_reproduce_pipeline'] = reproduce
+        # Control de reproducibilidad: el experimento equivalente es el mismo problema que
+        # optimizó el pipeline, así que con la misma semilla debe elegir los mismos parámetros.
+        reproduce = params_por_experimento[exp_pipeline] == params_pipeline
+        resultado['control_optuna_reproduce_pipeline'] = reproduce
         if not reproduce:
-            print(f"  [AVISO] La línea base optimizada eligió {params_por_experimento['linea_base']}"
-                  f" y no {params_fijos} (model_rf_metrics.json).")
+            print(f"  [AVISO] '{exp_pipeline}' optimizado eligió {params_por_experimento[exp_pipeline]}"
+                  f" y no {params_pipeline} (model_rf_metrics.json).")
 
     if not args.sin_mapa:
         print("\n=== Recall LORO cartográfico (top-K sobre el mapa) ===")
@@ -505,12 +540,16 @@ def main():
             resultado['recall_loro_cartografico'][experimento] = _recall_loro_cartografico(
                 config, muestras_por_experimento[experimento], params_por_experimento[experimento],
                 capas, experimento, dir_salida, random_state)
+        # Solo es el mismo modelo que el del pipeline si además comparte sus hiperparámetros.
+        mismo_modelo = params_por_experimento[exp_pipeline] == params_pipeline
         resultado['control_recall_publicado_max_dif'] = _controlar_recall_publicado(
-            config, resultado['recall_loro_cartografico']['linea_base']['recall_por_k'],
-            estricto=params_por_experimento['linea_base'] == params_fijos)
+            config, resultado['recall_loro_cartografico'][exp_pipeline]['recall_por_k'],
+            estricto=mismo_modelo)
         resultado['recall_loro_cartografico']['nota'] = (
             "Los experimentos con 'previas' no tienen mapa: la red visible depende de la fecha "
-            "de cada planta. 'linea_base' reproduce out_of_sample_loro de metricas_topk.json.")
+            "de cada planta."
+            + (f" '{exp_pipeline}' reproduce out_of_sample_loro de metricas_topk.json."
+               if mismo_modelo else ""))
 
     # Todos los productos del estudio viven juntos en su carpeta: JSON, tabla, figuras y
     # capas filtradas. No se mezclan con figures/ ni con los artefactos del pipeline.

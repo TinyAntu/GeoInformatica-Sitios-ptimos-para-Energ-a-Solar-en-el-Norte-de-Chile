@@ -97,16 +97,18 @@ def _entrenar_y_evaluar(positivas_df, pool_neg_df, features, ratio, n_estimators
     return auc, brier, importances, clf, dataset, y_test, y_probs
 
 
-def _figures_dir() -> str:
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    figures_dir = os.path.join(root_dir, 'figures')
+def _figures_dir(figures_dir: str | None = None) -> str:
+    """Carpeta de las figuras del modelo: la que se pase o, por defecto, `figures/`."""
+    if figures_dir is None:
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        figures_dir = os.path.join(root_dir, 'figures')
     os.makedirs(figures_dir, exist_ok=True)
     return figures_dir
 
 
-def _guardar_importancias(importances: pd.DataFrame, filename: str) -> str:
-    figures_dir = _figures_dir()
-    output_path = os.path.join(figures_dir, filename)
+def _guardar_importancias(importances: pd.DataFrame, filename: str,
+                          figures_dir: str | None = None) -> str:
+    output_path = os.path.join(_figures_dir(figures_dir), filename)
 
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.barh(importances['Criterio'], importances['Peso_ML'], color='#2a7f62')
@@ -120,9 +122,9 @@ def _guardar_importancias(importances: pd.DataFrame, filename: str) -> str:
     return output_path
 
 
-def _guardar_curva_precision_recall(y_test, y_probs, filename: str) -> str:
-    figures_dir = _figures_dir()
-    output_path = os.path.join(figures_dir, filename)
+def _guardar_curva_precision_recall(y_test, y_probs, filename: str,
+                                    figures_dir: str | None = None) -> str:
+    output_path = os.path.join(_figures_dir(figures_dir), filename)
 
     precision, recall, _ = precision_recall_curve(y_test, y_probs)
     ap_score = average_precision_score(y_test, y_probs)
@@ -139,9 +141,8 @@ def _guardar_curva_precision_recall(y_test, y_probs, filename: str) -> str:
     return output_path
 
 
-def _guardar_curva_roc(y_test, y_probs, filename: str) -> str:
-    figures_dir = _figures_dir()
-    output_path = os.path.join(figures_dir, filename)
+def _guardar_curva_roc(y_test, y_probs, filename: str, figures_dir: str | None = None) -> str:
+    output_path = os.path.join(_figures_dir(figures_dir), filename)
 
     fpr, tpr, _ = roc_curve(y_test, y_probs)
     roc_auc = auc(fpr, tpr)
@@ -172,9 +173,13 @@ def entrenar_modelo_rf(
     ratio_alt: int | None = None,
     tamano_bloque_km: float = 15,
     regiones_gdf: gpd.GeoDataFrame | None = None,
+    figures_dir: str | None = None,
 ) -> dict:
     """
     Entrena el Random Forest con el ratio principal incorporando Brier Score y análisis de sensibilidad.
+
+    `figures_dir` es la carpeta de sus figuras (importancias, ROC, precisión-recall); el
+    pipeline pasa `figures/modelo/` (ver src/rutas.py).
     """
     # Lista de características canónica (definida una sola vez en src/features.py)
     features = list(FEATURES)
@@ -245,9 +250,10 @@ def entrenar_modelo_rf(
     print(f"  [MÉTRICA DE RECORD] SBCV AUC = {auc_sbcv:.4f} ± {sbcv['auc_std']:.4f} | "
           f"Brier = {brier_sbcv:.4f}  (el AUC del split aleatorio es referencia optimista)")
 
-    feature_path = _guardar_importancias(importances, 'feature_importances_rf.png')
-    pr_path = _guardar_curva_precision_recall(y_test_p, y_probs_p, f'precision_recall_ratio_{ratio}.png')
-    roc_path = _guardar_curva_roc(y_test_p, y_probs_p, f'roc_curve_ratio_{ratio}.png')
+    feature_path = _guardar_importancias(importances, 'feature_importances_rf.png', figures_dir)
+    pr_path = _guardar_curva_precision_recall(y_test_p, y_probs_p, f'precision_recall_ratio_{ratio}.png',
+                                              figures_dir)
+    roc_path = _guardar_curva_roc(y_test_p, y_probs_p, f'roc_curve_ratio_{ratio}.png', figures_dir)
     print(f"\nGráficos guardados en: {feature_path}, {pr_path}, {roc_path}")
 
     if ratio_alt is not None and ratio_alt != ratio:
@@ -258,8 +264,10 @@ def entrenar_modelo_rf(
         if auc_alt is not None:
             print(f"  Resultado Ratio 1:{ratio_alt} -> AUC: {auc_alt:.4f} | Brier Score: {brier_alt:.4f}")
             print(importances_alt.to_string(index=False))
-            pr_alt_path = _guardar_curva_precision_recall(y_test_a, y_probs_a, f'precision_recall_ratio_{ratio_alt}.png')
-            roc_alt_path = _guardar_curva_roc(y_test_a, y_probs_a, f'roc_curve_ratio_{ratio_alt}.png')
+            pr_alt_path = _guardar_curva_precision_recall(y_test_a, y_probs_a, f'precision_recall_ratio_{ratio_alt}.png',
+                                                          figures_dir)
+            roc_alt_path = _guardar_curva_roc(y_test_a, y_probs_a, f'roc_curve_ratio_{ratio_alt}.png',
+                                              figures_dir)
             print(f"  Gráficos alternativos guardados en: {pr_alt_path}, {roc_alt_path}")
             print(f"\n  Diferencia AUC (ratio {ratio} vs {ratio_alt}): {abs(auc - auc_alt):.4f}")
             if abs(auc - auc_alt) < 0.02:

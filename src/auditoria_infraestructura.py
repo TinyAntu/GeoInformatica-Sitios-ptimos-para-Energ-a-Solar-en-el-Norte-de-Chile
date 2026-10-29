@@ -34,6 +34,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
 
 from src.features import FEATURES
+# La regla "sin dedicadas" es la misma que usa el pipeline (src/infraestructura.py): la
+# auditoría la importa de ahí para que ambos midan exactamente lo mismo. Se reexporta
+# `asignar_tipo_por_subestacion` porque otros módulos la importan desde aquí.
+from src.infraestructura import asignar_tipo_por_subestacion, excluir_dedicadas  # noqa: F401
 from src.spatial_validation import (
     asignar_bloques_espaciales,
     spatial_block_cv,
@@ -74,6 +78,17 @@ FAMILIA_ACCESO_RED = ('dist_transmision', 'dist_subestaciones')
 FAMILIA_INFRAESTRUCTURA = tuple(CAPA_POR_FEATURE)
 
 
+def experimento_del_pipeline(config: dict) -> str:
+    """Experimento de la auditoría que reproduce el dataset y el modelo actuales del pipeline.
+
+    Con `control_fuga.excluir_dedicadas` el pipeline ve la red sin dedicadas en las tres
+    capas ('tres_sin_dedicadas'); sin él, la red completa ('linea_base'). Los controles de
+    la auditoría se comparan contra este experimento.
+    """
+    from src.infraestructura import control_fuga_activo
+    return 'tres_sin_dedicadas' if control_fuga_activo(config) else 'linea_base'
+
+
 def variantes_del_experimento(experimento: str) -> dict:
     """Variante de cada feature auditada en un experimento (las no declaradas: 'todas')."""
     declaradas = EXPERIMENTOS[experimento]
@@ -87,25 +102,6 @@ def tiene_mapa(experimento: str) -> bool:
     distancias "previa" para todo el territorio.
     """
     return 'previas' not in variantes_del_experimento(experimento).values()
-
-
-def asignar_tipo_por_subestacion(almacenamiento: gpd.GeoDataFrame,
-                                 subestaciones: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Agrega a la capa de almacenamiento el `TIPO` de la subestación a la que se conecta.
-
-    A diferencia de subestaciones y líneas, la capa de almacenamiento no trae `TIPO`
-    (DEDICADO/ZONAL/NACIONAL). Sí trae `NOMBRE_SE`, el nombre de su subestación de conexión.
-    Un BESS conectado a una subestación DEDICADA es, en la práctica, almacenamiento de la
-    propia central: se marca DEDICADO para que la regla 'sin_dedicadas' sea la misma en las
-    tres capas. Si el nombre no calza con ninguna subestación, queda 'S/I' (no se descarta:
-    no hay evidencia de que sea dedicado).
-    """
-    normalizar = lambda s: s.astype(str).str.upper().str.strip()
-    tipo_por_nombre = (subestaciones.assign(_nombre=normalizar(subestaciones['NOMBRE']))
-                       .drop_duplicates('_nombre').set_index('_nombre')['TIPO'])
-    resultado = almacenamiento.copy()
-    resultado['TIPO'] = normalizar(resultado['NOMBRE_SE']).map(tipo_por_nombre).fillna('S/I')
-    return resultado
 
 
 def preparar_infraestructura(capa: gpd.GeoDataFrame, codigos: list) -> gpd.GeoDataFrame:
@@ -182,8 +178,7 @@ def filtrar_infraestructura(capa: gpd.GeoDataFrame, variante: str,
     if variante == 'todas':
         return capa
     if variante == 'sin_dedicadas':
-        tipo = capa['TIPO'].astype(str).str.upper().str.strip()
-        return capa[tipo != 'DEDICADO']
+        return excluir_dedicadas(capa)
     if variante == 'previas':
         if fecha_corte is None:
             raise ValueError("La variante 'previas' necesita la fecha de corte de la muestra.")

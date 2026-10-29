@@ -37,7 +37,10 @@ import yaml
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
-from src.utils import _esta_actualizado, _correr_etapa, _resolver_rutas, _ruta_abs
+from src.utils import (_esta_actualizado, _correr_etapa, _resolver_rutas, _ruta_abs,
+                       _archivos_capa_vectorial)
+from src.infraestructura import CAPAS_CON_FUGA, rutas_vectores_efectivas
+from src.rutas import ruta_resultado, ruta_figura, prefijo_rendimiento
 
 
 # --------------------------------------------------------------------------------------
@@ -148,16 +151,19 @@ FASES = [
               entradas=lambda ctx: [ctx['ruta_config']] + ctx['rasters_procesados'] +
                                    ([ctx['model_out']] if ctx['model_out'] else []),
               salidas=lambda ctx: [ctx['mapa_rf']]),
+        # Los perfiles miden distancias a la red por su cuenta (no dependen del modelo): si
+        # cambian las capas de infraestructura, solo ellas invalidan esta etapa.
         Etapa('6', "Mapas de perfiles de inversión (AHP/WLC)",
               script="profiles.py",
-              entradas=lambda ctx: [ctx['ruta_config']] + ctx['rasters_procesados'],
+              entradas=lambda ctx: [ctx['ruta_config']] + ctx['rasters_procesados'] +
+                                   ctx['capas_infraestructura'],
               salidas=lambda ctx: ctx['mapas_perfiles']),
         # Dependencia externa opcional (ver AGENTS.md sección 6): best-effort, no rompe el
         # pipeline si el binario Rust no está compilado.
         Etapa('8', "Rendimiento PV fijo (motor Rust)",
               script="run_solar_yield.py",
               args_extra=lambda ctx: ['--config', ctx['args'].config],
-              entradas=lambda ctx: [ctx['ruta_config'], ctx['dem_out']],
+              entradas=lambda ctx: [ctx['ruta_config'], ctx['dem_out']] + ctx['ghi_motor'],
               salidas=lambda ctx: [ctx['rendimiento_fijo']],
               best_effort=True),
     ]),
@@ -175,7 +181,8 @@ FASES = [
         Etapa('10', "Comparación fijo (0° y 23°) vs. seguidor",
               script="run_comparacion_montaje.py",
               args_extra=lambda ctx: ['--config', ctx['args'].config, '--incluir-tilt0'],
-              entradas=lambda ctx: [ctx['ruta_config'], ctx['mapa_rf']],
+              entradas=lambda ctx: [ctx['ruta_config'], ctx['mapa_rf'], ctx['rendimiento_fijo']] +
+                                   ctx['ghi_motor'],
               salidas=lambda ctx: [ctx['comparacion_json']],
               best_effort=True),
         Etapa('11', "Consenso/divergencia entre perfiles",
@@ -263,11 +270,18 @@ def construir_contexto(args) -> dict:
     results = config['paths']['results']
 
     dem_out = processed['dem_32719']
-    mapa_rf = _ruta_abs('data/results/mapa_probabilidad_aptitud.tif')
-    out_prefix = _ruta_abs(config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento'))
+    # Cada producto en la subcarpeta de su tema (ver src/rutas.py).
+    res = lambda tema, nombre: ruta_resultado(config, tema, nombre)
+    mapa_rf = res('aptitud', 'mapa_probabilidad_aptitud.tif')
 
     bloque_transf = config.get('transferibilidad') or {}
-    dir_transf = bloque_transf.get('dir_resultados', 'data/results/transferibilidad')
+
+    # GHI observado del motor (origen y alineado): si cambia, el rendimiento debe recalcularse.
+    # Solo los que existen: sin el origen el motor usa el alineado (ver preparar_ghi), y una
+    # ruta inexistente haría que _esta_actualizado nunca diera la etapa por al día.
+    solarpv = config.get('solarpv') or {}
+    ghi_motor = [_ruta_abs(solarpv[clave]) for clave in ('ghi_origen', 'ghi') if solarpv.get(clave)]
+    vectores = rutas_vectores_efectivas(config)
 
     ctx = {
         'args': args,
@@ -277,27 +291,30 @@ def construir_contexto(args) -> dict:
         'dem_out': dem_out,
         'rasters_procesados': [dem_out, processed['slope'], processed['aspect'],
                                processed['ghi_32719']],
+        'ghi_motor': [p for p in ghi_motor if os.path.exists(p)],
+        'capas_infraestructura': [archivo for capa in CAPAS_CON_FUGA
+                                  for archivo in _archivos_capa_vectorial(vectores[capa])],
         'mapa_rf': mapa_rf,
-        'mapas_perfiles': [_ruta_abs(f'data/results/aptitud_{p}.tif')
-                           for p in ('conservador', 'agresivo')],
-        'rendimiento_fijo': out_prefix + '_fijo_specific_yield.tif',
-        'salidas_cruce': [_ruta_abs('data/results/aptitud_x_rendimiento.tif'),
-                          _ruta_abs('data/results/rendimiento_en_aptas.tif')],
-        'comparacion_json': _ruta_abs('data/results/comparacion_montaje.json'),
-        'salida_consenso': [_ruta_abs('data/results/consenso_perfiles.tif')],
-        'shap_json': _ruta_abs('data/results/shap_importancias.json'),
-        'shap_espacial_json': _ruta_abs('data/results/shap_espacial.json'),
-        'metricas_topk_json': _ruta_abs('data/results/metricas_topk.json'),
+        'mapas_perfiles': [res('aptitud', f'aptitud_{p}.tif') for p in ('conservador', 'agresivo')],
+        'rendimiento_fijo': prefijo_rendimiento(config) + '_fijo_specific_yield.tif',
+        'salidas_cruce': [res('cruce', 'aptitud_x_rendimiento.tif'),
+                          res('cruce', 'rendimiento_en_aptas.tif')],
+        'comparacion_json': res('rendimiento', 'comparacion_montaje.json'),
+        'salida_consenso': [res('aptitud', 'consenso_perfiles.tif')],
+        'shap_json': res('explicabilidad', 'shap_importancias.json'),
+        'shap_espacial_json': res('explicabilidad', 'shap_espacial.json'),
+        'metricas_topk_json': res('modelo', 'metricas_topk.json'),
         'script_figuras': os.path.join(directorio_raiz, 'scripts', 'generar_figuras_informe.py'),
-        'figuras': [os.path.join(directorio_raiz, 'figures', nombre) for nombre in
-                    ('mapa_aptitud_rf.png', 'mapa_aptitud_conservador.png',
-                     'mapa_aptitud_agresivo.png', 'mapa_cruce_aptitud_rendimiento.png',
-                     'mapa_consenso_perfiles.png', 'mapa_shap_dominante.png',
-                     'comparacion_fijo_vs_seguidor.png', 'metricas_validacion.png')],
+        'figuras': [ruta_figura(config, tema, nombre) for tema, nombre in (
+            ('aptitud', 'mapa_aptitud_rf.png'), ('aptitud', 'mapa_aptitud_conservador.png'),
+            ('aptitud', 'mapa_aptitud_agresivo.png'), ('cruce', 'mapa_cruce_aptitud_rendimiento.png'),
+            ('aptitud', 'mapa_consenso_perfiles.png'), ('explicabilidad', 'mapa_shap_dominante.png'),
+            ('rendimiento', 'comparacion_fijo_vs_seguidor.png'), ('modelo', 'metricas_validacion.png'))],
         'bloque_transf': bloque_transf,
         'carpetas_transf': [_ruta_abs(c) for c in bloque_transf.get('dem_folders', [])],
         'dem_transf': _ruta_abs(bloque_transf['dem']) if bloque_transf.get('dem') else '',
-        'metricas_transf': _ruta_abs(os.path.join(dir_transf, 'metricas_transferibilidad.json')),
+        'metricas_transf': (ruta_resultado(config, 'transferibilidad', 'metricas_transferibilidad.json',
+                                           zona='transferibilidad') if bloque_transf else ''),
         'resultados': {},
     }
     # Las etapas 12 y 13 comparten deliberadamente la misma lista de entradas: ambas dependen

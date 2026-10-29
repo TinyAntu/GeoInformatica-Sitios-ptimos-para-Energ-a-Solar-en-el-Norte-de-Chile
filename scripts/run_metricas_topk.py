@@ -1,6 +1,6 @@
 """CLI: métricas Recall@K% y Precisión@K% contra los umbrales comprometidos en PEP1 §6.5.
 
-Calcula tres cifras y las guarda en data/results/metricas_topk.json:
+Calcula tres cifras y las guarda en data/results/modelo/metricas_topk.json:
   A-100  in-sample sobre el mapa entregado (100 m)  -> la cifra del producto final
   A-500  in-sample por región (grilla de comparación) -> ancla de comparabilidad
   B-500  out-of-sample LORO (hold-out espacial)     -> la cifra defendible
@@ -35,6 +35,7 @@ from src.metricas_topk import (
 )
 from src.spatial_validation import asignar_region_a_muestras
 from src.utils import _esta_actualizado
+from src.rutas import ruta_resultado
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -114,9 +115,9 @@ def main():
         config = yaml.safe_load(f)
 
     paths_results = config['paths']['results']
-    model_path = _ruta_abs(paths_results.get('model_rf', 'data/results/model_rf.pkl'))
-    mapa_path = _ruta_abs('data/results/mapa_probabilidad_aptitud.tif')
-    salida = _ruta_abs('data/results/metricas_topk.json')
+    model_path = _ruta_abs(paths_results['model_rf'])
+    mapa_path = ruta_resultado(config, 'aptitud', 'mapa_probabilidad_aptitud.tif')
+    salida = ruta_resultado(config, 'modelo', 'metricas_topk.json')
 
     for ruta, que in ((model_path, 'el modelo'), (mapa_path, 'el mapa de aptitud')):
         if not os.path.exists(ruta):

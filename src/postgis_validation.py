@@ -504,7 +504,9 @@ def load_to_postgis_db(
         dbname = connection_config.get("dbname", "geoinformatica_db")
 
         # quote_plus escapa caracteres especiales de la contraseña en la URL de conexión.
-        connection_url = f"postgresql://{user}:{quote_plus(pwd)}@{host}:{port}/{dbname}"
+        # El driver va explícito: desde SQLAlchemy 2.1, "postgresql://" usa psycopg (v3) por
+        # defecto, y requirements.txt instala psycopg2-binary.
+        connection_url = f"postgresql+psycopg2://{user}:{quote_plus(pwd)}@{host}:{port}/{dbname}"
         logger.info(f"Conectando a PostGIS en {host}:{port}/{dbname}...")
         engine = create_engine(connection_url)
 

@@ -26,6 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.features import FEATURES
+from src.infraestructura import rutas_vectores_efectivas
 
 NODATA = -9999.0
 
@@ -107,9 +108,12 @@ def _construir_features(config, resolucion_m, zona=None):
 
     px = transform[0]
     kw = {"codigos": zona["codigos"], "modo": zona["modo_region"]}
-    d_trans = calcular_distancia_a_capa(paths_raw["vectores"]["lineas"], crs, grid_shape, transform, px, regiones, nombre="transmisión", **kw)
-    d_almac = calcular_distancia_a_capa(paths_raw["vectores"]["almacenamiento"], crs, grid_shape, transform, px, regiones, nombre="almacenamiento", **kw)
-    d_subes = calcular_distancia_a_capa(paths_raw["vectores"]["subestaciones"], crs, grid_shape, transform, px, regiones, nombre="subestaciones", **kw)
+    # Misma red que vio el modelo al entrenar (control de fuga, src/infraestructura.py). Las
+    # capas filtradas son nacionales, así que otra zona (Coquimbo) aplica el mismo criterio.
+    vectores_red = rutas_vectores_efectivas(config)
+    d_trans = calcular_distancia_a_capa(vectores_red["lineas"], crs, grid_shape, transform, px, regiones, nombre="transmisión", **kw)
+    d_almac = calcular_distancia_a_capa(vectores_red["almacenamiento"], crs, grid_shape, transform, px, regiones, nombre="almacenamiento", **kw)
+    d_subes = calcular_distancia_a_capa(vectores_red["subestaciones"], crs, grid_shape, transform, px, regiones, nombre="subestaciones", **kw)
 
     valid = ((region_mask == 1) & ~np.isnan(ghi) & ~np.isnan(elev) & ~np.isnan(slope)
              & ~np.isnan(northness) & ~np.isnan(d_trans) & ~np.isnan(d_almac) & ~np.isnan(d_subes))

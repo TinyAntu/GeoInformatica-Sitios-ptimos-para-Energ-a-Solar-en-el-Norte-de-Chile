@@ -56,6 +56,51 @@ class TestDesacople(unittest.TestCase):
         self.assertEqual(len(filtradas), 2)
         self.assertNotIn('DEDICADO', filtradas['TIPO'].values)
 
+    def _rasters(self, tmpdir, aptitud, rendimiento):
+        """Escribe aptitud y rendimiento en la misma grilla de 100 m (EPSG:32719)."""
+        import rasterio
+        from rasterio.transform import from_origin
+        rutas = {}
+        for nombre, arr in (('aptitud', aptitud), ('rendimiento', rendimiento)):
+            rutas[nombre] = os.path.join(tmpdir, f'{nombre}.tif')
+            meta = {'driver': 'GTiff', 'dtype': 'float32', 'count': 1, 'crs': 'EPSG:32719',
+                    'transform': from_origin(300000, 7000000, 100, 100),
+                    'width': arr.shape[1], 'height': arr.shape[0], 'nodata': -9999.0}
+            with rasterio.open(rutas[nombre], 'w', **meta) as dst:
+                dst.write(arr.astype(np.float32), 1)
+        return rutas
+
+    def test_excluye_celdas_sin_ghi_y_zonas_de_exclusion(self):
+        """Rendimiento 0 (sin GHI en el motor) y zonas de exclusión no entran al análisis."""
+        aptitud = np.full((10, 10), 0.5, dtype=np.float32)
+        aptitud[0, :] = 0.9                       # una fila de celdas aptas
+        rendimiento = np.full((10, 10), 2000.0, dtype=np.float32)
+        rendimiento[:, 9] = 0.0                   # última columna sin dato de GHI
+        exclusion = np.zeros((10, 10), dtype=bool)
+        exclusion[5, :5] = True                   # cinco celdas en una zona de exclusión
+        with tempfile.TemporaryDirectory() as tmp:
+            rutas = self._rasters(tmp, aptitud, rendimiento)
+            cruce = alinear_y_cruzar(rutas['aptitud'], rutas['rendimiento'], umbral=0.7,
+                                     mascara_exclusion=exclusion)
+        stats = cruce['stats']
+        self.assertEqual(stats['celdas_excluidas_sin_ghi'], 10)
+        self.assertEqual(stats['celdas_excluidas_zonas_exclusion'], 5)
+        self.assertEqual(stats['celdas_validas'], 100 - 10 - 5)
+        self.assertEqual(stats['celdas_aptas'], 9)  # la fila apta sin su celda sin GHI
+        # Sin las celdas en cero, la media regional es exactamente la del terreno con dato.
+        self.assertEqual(stats['rendimiento_region']['media'], 2000.0)
+
+    def test_sin_celdas_aptas_falla_con_mensaje_claro(self):
+        """Sin celdas aptas no hay desacople que medir: error explícito, no uno de scipy."""
+        from src.desacople_aptitud_rendimiento import calcular_estadisticas_desacople
+        aptitud = np.full((10, 10), 0.3, dtype=np.float32)       # nada llega a 0,70
+        rendimiento = np.full((10, 10), 2000.0, dtype=np.float32)
+        with tempfile.TemporaryDirectory() as tmp:
+            rutas = self._rasters(tmp, aptitud, rendimiento)
+            cruce = alinear_y_cruzar(rutas['aptitud'], rutas['rendimiento'], umbral=0.7)
+        with self.assertRaisesRegex(ValueError, "celdas aptas"):
+            calcular_estadisticas_desacople(cruce, n_bootstrap=10)
+
     def test_asignar_bloques_a_celdas(self):
         """Verifica la asignación de identificadores de bloques regulares de 30 km."""
         from src.desacople_aptitud_rendimiento import asignar_bloques_a_celdas
