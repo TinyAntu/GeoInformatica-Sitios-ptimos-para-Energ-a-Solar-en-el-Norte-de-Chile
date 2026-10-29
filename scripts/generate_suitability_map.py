@@ -20,6 +20,8 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.features import FEATURES  # orden canónico de features (ver src/features.py)
+from src.infraestructura import rutas_vectores_efectivas
+from src.rutas import ruta_resultado, ruta_figura
 
 def read_and_reproject_to_grid(src_path, dst_crs, dst_shape, dst_transform, nodata_val=np.nan,
                                resampling=Resampling.bilinear):
@@ -197,15 +199,14 @@ def calcular_distancia_a_capa(path, crs, grid_shape, transform, pixel_size_meter
     print(f"  Distancia máxima a {etiqueta}: {dist_metros.max():.2f} metros")
     return dist_metros
 
-def generar_grafico_precision_recall(paths_results, directorio_raiz, model):
+def generar_grafico_precision_recall(paths_results, plot_output_path, model):
     """
     Carga el dataset de entrenamiento, extrae el set de validación (test)
     y genera/guarda la curva Precision-Recall para evaluar la calibración del modelo.
     """
     try:
         print("\n--- Generando gráfica de curva Precision-Recall para validación ---")
-        # Obtener ruta desde la configuración con un fallback seguro
-        dataset_ml_path = paths_results.get('dataset_ml', 'data/results/dataset_entrenamiento_rf.shp')
+        dataset_ml_path = paths_results['dataset_ml']
         
         if not os.path.exists(dataset_ml_path):
             print(f"  [AVISO] No se encontró el SHP en {dataset_ml_path}. Se omite el gráfico.")
@@ -248,7 +249,6 @@ def generar_grafico_precision_recall(paths_results, directorio_raiz, model):
         plt.grid(True, linestyle='--', alpha=0.6)
         
         # Guardar la imagen en alta resolución
-        plot_output_path = os.path.join(directorio_raiz, 'data/results/curva_precision_recall.png')
         plt.savefig(plot_output_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"  [ÉXITO] Gráfica PR guardada en: {plot_output_path}\n")
@@ -268,9 +268,8 @@ def main():
     paths_processed = config['paths']['processed']
     paths_results = config['paths']['results']
 
-    model_path = paths_results.get('model_rf', 'data/results/model_rf.pkl')
-    output_tif_path = os.path.join(directorio_raiz, 'data/results/mapa_probabilidad_aptitud.tif')
-    os.makedirs(os.path.dirname(output_tif_path), exist_ok=True)
+    model_path = paths_results['model_rf']
+    output_tif_path = ruta_resultado(config, 'aptitud', 'mapa_probabilidad_aptitud.tif')
 
     # Verificar que el modelo exista
     if not os.path.exists(model_path):
@@ -336,17 +335,20 @@ def main():
     # El transform[0] da el ancho del píxel en metros para convertir distancias a unidades reales.
     pixel_size_meters = transform[0]
     print("Calculando distancias a infraestructura de red...")
+    # Misma red que vio el modelo al entrenar: sin infraestructura dedicada si el control de
+    # fuga está activo (src/infraestructura.py).
+    vectores_red = rutas_vectores_efectivas(config)
 
     dist_transmision_data = calcular_distancia_a_capa(
-        paths_raw['vectores']['lineas'], crs, grid_shape, transform,
+        vectores_red['lineas'], crs, grid_shape, transform,
         pixel_size_meters, regiones_norte, nombre="líneas de transmisión")
 
     dist_almacen_data = calcular_distancia_a_capa(
-        paths_raw['vectores']['almacenamiento'], crs, grid_shape, transform,
+        vectores_red['almacenamiento'], crs, grid_shape, transform,
         pixel_size_meters, regiones_norte, nombre="almacenamiento de energía")
 
     dist_subestaciones_data = calcular_distancia_a_capa(
-        paths_raw['vectores']['subestaciones'], crs, grid_shape, transform,
+        vectores_red['subestaciones'], crs, grid_shape, transform,
         pixel_size_meters, regiones_norte, nombre="subestaciones")
 
     # 6. Preparar máscara de píxeles válidos para predecir
@@ -425,7 +427,8 @@ def main():
         suitability_grid[(mask_excl == 1) & (suitability_grid != -9999.0)] = 0.0
 
     # 9. Grafico de validación adicional: Curva Precision-Recall para evaluar el desempeño del modelo en el dataset de entrenamiento
-    generar_grafico_precision_recall(paths_results, directorio_raiz, model)
+    generar_grafico_precision_recall(paths_results,
+                                     ruta_figura(config, 'modelo', 'curva_precision_recall.png'), model)
 
     # 10. Guardar mapa en formato GeoTIFF
     meta_base.update(

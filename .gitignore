@@ -2,9 +2,10 @@ data/processed/
 data/raw/
 data/result/
 data/results/
-data/results/mapa_probabilidad_aptitud.tif
+data/results/aptitud/mapa_probabilidad_aptitud.tif
 docs/
 data/*
+
 
 *.tif
 *.gpkg
@@ -26,3 +27,5 @@ tests/__pycache__ /
 . vscode /
 CLAUDE.md
 contexto/
+# Salida por defecto de scripts/reproducir_bug_tile_ghi.py
+reproduccion_bug_tile_ghi/

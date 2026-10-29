@@ -26,15 +26,17 @@ sys.path.append(directorio_raiz)
 
 from src.utils import _resolver_rutas, _ruta_abs, _esta_actualizado
 from src.sensibilidad_muestreo import analizar_sensibilidad_muestreo
+from src.rutas import dir_analisis, dir_figuras_analisis
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--config', default='config.yaml', help='Ruta al archivo config.yaml')
     parser.add_argument('--out-json', default=None,
-                        help='Ruta de salida del JSON (por defecto data/results/sensibilidad_muestreo.json)')
+                        help='Ruta de salida del JSON (por defecto '
+                             'data/results/analisis/sensibilidad_muestreo/sensibilidad_muestreo.json)')
     parser.add_argument('--figures-dir', default=None,
-                        help='Directorio de salida de figuras (por defecto figures/)')
+                        help='Directorio de salida de figuras (por defecto figures/analisis/sensibilidad_muestreo/)')
     parser.add_argument('--regenerar', action='store_true',
                         help='Fuerza recalcular aunque el resultado ya esté actualizado')
     args = parser.parse_args()
@@ -45,11 +47,10 @@ def main():
     config['paths'] = _resolver_rutas(config['paths'])
 
     out_json = _ruta_abs(args.out_json) if args.out_json else os.path.join(
-        directorio_raiz, 'data', 'results', 'sensibilidad_muestreo.json'
+        dir_analisis(config, 'sensibilidad_muestreo'), 'sensibilidad_muestreo.json'
     )
-    figures_dir = _ruta_abs(args.figures_dir) if args.figures_dir else os.path.join(
-        directorio_raiz, 'figures'
-    )
+    figures_dir = (_ruta_abs(args.figures_dir) if args.figures_dir
+                   else dir_figuras_analisis(config, 'sensibilidad_muestreo'))
 
     print("=" * 75)
     print("ANÁLISIS DE SENSIBILIDAD AL DISEÑO DE PSEUDO-AUSENCIAS (PEP2 -> PAPER)")

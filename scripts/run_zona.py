@@ -4,7 +4,8 @@ Encadena las ocho etapas que producen, para una región que NO participó del en
 los mismos productos que el pipeline genera para la zona de estudio: mapa de aptitud, perfiles
 AHP, consenso, SHAP espacial, rendimiento físico, cruce, métricas y figuras.
 
-Todo se escribe bajo el `dir_resultados` de la zona (data/results/<zona>/) y su `dir_figuras`.
+Todo se escribe bajo el `dir_resultados` de la zona (data/results/<zona>/) y su `dir_figuras`,
+con las mismas subcarpetas por tema que la zona de estudio (src/rutas.py).
 Ningún artefacto de la zona de entrenamiento se toca: los scripts del pipeline escriben en
 rutas fijas de data/results/, y correrlos sobre otra región sin redirigir la salida
 sobrescribiría los mapas que cita el informe.

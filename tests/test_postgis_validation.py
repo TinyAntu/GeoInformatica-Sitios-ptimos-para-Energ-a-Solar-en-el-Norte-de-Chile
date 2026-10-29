@@ -125,6 +125,27 @@ class TestPostGISValidation(unittest.TestCase):
         self.assertIn("INSERT INTO public.test_instalaciones", sql)
         self.assertIn("ST_SetSRID(ST_GeomFromText('POINT (350000 7350000)'), 32719)", sql)
 
+    def test_conexion_usa_driver_psycopg2(self):
+        """La URL fija el driver psycopg2 (el de requirements.txt). Con "postgresql://" a secas,
+        SQLAlchemy 2.1 usa psycopg (v3), que no está instalado, y la carga fallaba."""
+        from unittest import mock
+        from sqlalchemy.engine import make_url
+        from src.postgis_validation import load_to_postgis_db
+
+        gdf = gpd.GeoDataFrame({"id": [1]}, geometry=[Point(350000, 7350000)], crs="EPSG:32719")
+        conexion = {"host": "localhost", "port": 5433, "dbname": "geoinformatica_db",
+                    "user": "postgres"}
+        with mock.patch("sqlalchemy.create_engine") as crear_engine, \
+                mock.patch.object(gpd.GeoDataFrame, "to_postgis") as to_postgis, \
+                mock.patch.dict(os.environ, {"PGPASSWORD": "c@lve/rara"}):
+            self.assertTrue(load_to_postgis_db(gdf, conexion))
+
+        url = make_url(crear_engine.call_args.args[0])
+        self.assertEqual(url.get_dialect().driver, "psycopg2")
+        self.assertEqual((url.host, url.port, url.database), ("localhost", 5433, "geoinformatica_db"))
+        self.assertEqual(url.password, "c@lve/rara")   # quote_plus la escapa y se recupera intacta
+        to_postgis.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

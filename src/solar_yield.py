@@ -8,7 +8,7 @@ GeoTIFF de salida.
 
 El motor emite en EPSG:32719 (UTM 19S) sobre el mismo DEM del proyecto, por lo que su
 salida `*_specific_yield.tif` es directamente comparable, celda a celda, con nuestro
-`data/results/mapa_probabilidad_aptitud.tif`. Antes de devolver la ruta validamos que la
+`data/results/aptitud/mapa_probabilidad_aptitud.tif`. Antes de devolver la ruta validamos que la
 salida efectivamente esté en ese CRS y dentro de la extensión de Antofagasta/Atacama
 (ver AGENTS.md, sección 6).
 """
@@ -24,6 +24,17 @@ class MotorNoDisponibleError(RuntimeError):
 
 class SalidaMotorInvalidaError(RuntimeError):
     """La salida del motor no cumple el CRS o la extensión esperados del proyecto."""
+
+
+class MotorSinCorreccionTileError(RuntimeError):
+    """El binario no tiene la corrección de `--tile` con `--ghi` (solarpv-rs v0.4.0 original)."""
+
+
+# Parche que corrige `--tile` con `--ghi` en solarpv-rs v0.4.0 (ver README, sección del motor).
+PARCHE_TILE_GHI = "parches/solarpv-rs_tile_ghi_origen.patch"
+
+# Binarios que ya pasaron `verificar_tile_con_ghi` en este proceso.
+_BINARIOS_VERIFICADOS = set()
 
 
 def _resolver_binario(binario: str) -> str:
@@ -124,6 +135,72 @@ def construir_comando(
     return cmd
 
 
+def verificar_tile_con_ghi(binario: str) -> None:
+    """Comprueba que el binario lea bien el GHI observado cuando tesela (`--tile` + `--ghi`).
+
+    En solarpv-rs v0.4.0 cada tesela lee el GHI con sus índices locales, aunque el GHI está
+    alineado al DEM completo: todas las teselas leen la esquina noroeste y, en nuestro DEM
+    (mar sin dato), el rendimiento sale 0; donde la esquina sí tiene GHI, sale con la
+    nubosidad de otra zona. El parche `PARCHE_TILE_GHI` lo corrige. Como el binario no expone
+    si está parchado, se prueba: un DEM sintético de 40×40 celdas con un GHI en gradiente y
+    un bloque sin dato en la esquina noroeste (como el mar) se corre con y sin `--tile`. Con
+    la corrección ambas salidas coinciden; sin ella, celdas con GHI salen en 0 o cambian. Son
+    pocos segundos frente a la hora que tarda la corrida real.
+    """
+    import tempfile
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    n, bloque_sin_dato, tesela = 40, 8, 16
+    perfil = {'driver': 'GTiff', 'dtype': 'float32', 'count': 1, 'width': n, 'height': n,
+              'crs': 'EPSG:32719', 'transform': from_origin(400000, 7400000, 90, 90)}
+    filas, columnas = np.mgrid[0:n, 0:n]
+    ghi = (5.0 + 0.05 * filas + 0.03 * columnas).astype('float32')   # kWh/m²/día
+    ghi[:bloque_sin_dato, :bloque_sin_dato] = np.nan
+    dem = (1000.0 + 5.0 * columnas).astype('float32')                  # ladera suave
+
+    with tempfile.TemporaryDirectory(prefix='solarpv_verificacion_') as tmp:
+        rutas = {'dem': os.path.join(tmp, 'dem.tif'), 'ghi': os.path.join(tmp, 'ghi.tif')}
+        for nombre, datos in (('dem', dem), ('ghi', ghi)):
+            with rasterio.open(rutas[nombre], 'w', **perfil, nodata=np.nan) as dst:
+                dst.write(datos, 1)
+
+        salidas = {}
+        for etiqueta, tile in (('sin_tile', None), ('con_tile', tesela)):
+            prefijo = os.path.join(tmp, etiqueta)
+            cmd = construir_comando(binario, rutas['dem'], prefijo, lat=-23.6, lon=-69.5,
+                                    date="2026-01-01", mount="tilt", tilt=23, tile=tile,
+                                    horizon_radius=4, ghi=rutas['ghi'], ghi_unit="kwh")
+            resultado = subprocess.run(cmd, capture_output=True, text=True)
+            if resultado.returncode != 0:
+                raise RuntimeError(f"El motor falló en la verificación de --tile con --ghi "
+                                   f"(código {resultado.returncode}).\n{resultado.stderr}")
+            with rasterio.open(f"{prefijo}_specific_yield.tif") as src:
+                salidas[etiqueta] = src.read(1).astype('float64')
+
+    con_ghi = np.isfinite(ghi)
+    referencia, teselado = salidas['sin_tile'][con_ghi], salidas['con_tile'][con_ghi]
+    # La comparación solo vale si la referencia es válida en todas las celdas con GHI: un NaN
+    # haría que np.max devolviera NaN y la condición de abajo nunca fallara.
+    if not (np.isfinite(referencia).all() and (referencia > 0).all()):
+        raise RuntimeError("La verificación de --tile no es concluyente: la corrida sin --tile "
+                           "dejó celdas con GHI sin rendimiento. Revisa la versión del motor.")
+    dif_max = float(np.max(np.abs(teselado - referencia) / referencia))
+    if not np.isfinite(teselado).all() or (teselado <= 0).any() or dif_max > 1e-6:
+        raise MotorSinCorreccionTileError(
+            f"El motor en '{binario}' no lee bien el GHI con --tile (solarpv-rs v0.4.0 sin "
+            f"corregir): {int((teselado <= 0).sum())} celdas con GHI salieron en 0 y la "
+            f"diferencia máxima frente a la corrida sin --tile es {dif_max:.2%}.\n"
+            "Aplica el parche y recompila:\n"
+            f"    cd solarpv-rs && git apply ../{PARCHE_TILE_GHI}\n"
+            "    cargo build --release -p solarpv-cli\n"
+            "(o deja 'solarpv.tile' en 0 si el DEM cabe en memoria sin teselar)."
+        )
+    _BINARIOS_VERIFICADOS.add(binario)
+    print("  [OK] El motor lee bien el GHI con --tile (corrección aplicada).")
+
+
 def _remuestrear_dem(dem_path: str, resolucion_m: float) -> str:
     """Remuestrea el DEM a `resolucion_m` (bilinear) en un archivo temporal y lo devuelve.
 
@@ -150,6 +227,104 @@ def _remuestrear_dem(dem_path: str, resolucion_m: float) -> str:
         dst.write(data, 1)
     print(f"  DEM remuestreado a {resolucion_m:.0f} m: {width}x{height} = {width*height:,} celdas -> {out}")
     return out
+
+
+def ghi_a_kwh_dia(ghi):
+    """Devuelve el GHI en kWh/m²/día (lo que espera `--ghi-unit kwh`) y la unidad detectada.
+
+    Indicación del profesor: sobre el desierto un GHI medio diario vale ~6-8 kWh/m²/día y
+    uno anual ~2.000-2.900 kWh/m²/año. Se decide por la mediana de las celdas con dato: el
+    anual se divide por 365; otra escala (W/m², MJ/m²) se rechaza en vez de correr el motor
+    con unidades equivocadas, porque el error no se notaría en la salida.
+    """
+    import numpy as np
+
+    mediana = float(np.nanmedian(ghi))
+    if 1.0 <= mediana <= 12.0:
+        return ghi, "kWh/m²/día"
+    if 365.0 <= mediana <= 4400.0:
+        return ghi / 365.0, "kWh/m²/año (dividido por 365)"
+    raise ValueError(f"GHI con mediana {mediana:.2f}: no parece kWh/m²/día (~6-8 en el desierto) "
+                     f"ni kWh/m²/año (~2.000-2.900). Revisa las unidades del ráster de origen.")
+
+
+def alinear_ghi_a_dem(ghi_origen: str, dem_path: str, salida: str) -> str:
+    """Remuestrea el GHI observado (Explorador Solar) a la grilla exacta del DEM.
+
+    El motor exige que `--ghi` calce celda a celda con el DEM, así que se reproyecta a su
+    CRS (EPSG:32719), transform y tamaño, con remuestreo bilineal: el GHI es un campo
+    continuo y suave (~1 km), a diferencia del aspect. Sale en kWh/m²/día (`ghi_unit: kwh`):
+    si el origen viene en kWh/m²/año se divide por 365 (`ghi_a_kwh_dia`). Las celdas sin
+    dato o en cero (mar, bordes del producto)
+    se escriben como NaN: el motor las deja en rendimiento 0 y los análisis las excluyen.
+    Se omite si `salida` ya es más nueva que el GHI de origen y el DEM.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.warp import reproject
+    from src.utils import _esta_actualizado
+
+    if _esta_actualizado([ghi_origen, dem_path], [salida]):
+        print(f"  [OK] GHI alineado al DEM ya está actualizado: {salida}")
+        return salida
+
+    with rasterio.open(ghi_origen) as src:
+        ghi = src.read(1).astype(np.float32)
+        sin_dato = ~np.isfinite(ghi) | (ghi <= 0)
+        if src.nodata is not None:
+            sin_dato |= ghi == src.nodata
+        ghi[sin_dato] = np.nan
+        ghi, unidad = ghi_a_kwh_dia(ghi)
+        print(f"  Unidad del GHI de origen: {unidad}")
+        src_transform, src_crs = src.transform, src.crs
+
+    with rasterio.open(dem_path) as dem:
+        perfil = {'driver': 'GTiff', 'dtype': 'float32', 'count': 1, 'nodata': np.nan,
+                  'crs': dem.crs, 'transform': dem.transform,
+                  'width': dem.width, 'height': dem.height,
+                  'compress': 'deflate', 'tiled': True, 'blockxsize': 512, 'blockysize': 512}
+
+    destino = np.full((perfil['height'], perfil['width']), np.nan, dtype=np.float32)
+    reproject(source=ghi, destination=destino,
+              src_transform=src_transform, src_crs=src_crs, src_nodata=np.nan,
+              dst_transform=perfil['transform'], dst_crs=perfil['crs'], dst_nodata=np.nan,
+              resampling=Resampling.bilinear)
+
+    os.makedirs(os.path.dirname(salida) or '.', exist_ok=True)
+    with rasterio.open(salida, 'w', **perfil) as dst:
+        dst.write(destino, 1)
+    validos = destino[np.isfinite(destino)]
+    print(f"  GHI alineado al DEM ({perfil['width']}x{perfil['height']}): "
+          f"mín {validos.min():.2f} | mediana {np.median(validos):.2f} | máx {validos.max():.2f} "
+          f"kWh/m²/día | {int((~np.isfinite(destino)).sum()):,} celdas sin dato -> {salida}")
+    return salida
+
+
+def preparar_ghi(cfg: dict, ruta_abs) -> str:
+    """Ruta absoluta del GHI alineado que usará el motor, o None si se corre a cielo despejado.
+
+    Si `cfg` declara `ghi_origen`, (re)genera `cfg['ghi']` alineándolo a `cfg['dem']`. Así
+    cada zona (norte, Coquimbo) obtiene su propio GHI en la grilla de su DEM.
+    """
+    if not cfg.get('ghi'):
+        return None
+    ghi = ruta_abs(cfg['ghi'])
+    origen = ruta_abs(cfg['ghi_origen']) if cfg.get('ghi_origen') else None
+    if origen and os.path.exists(origen):
+        alinear_ghi_a_dem(origen, ruta_abs(cfg['dem']), ghi)
+    elif os.path.exists(ghi):
+        # El origen se descarga aparte del Explorador Solar (no viene en los datos de Drive):
+        # quien ya tiene el GHI alineado puede correr el motor sin él.
+        if origen:
+            print(f"  [AVISO] No está el GHI de origen ({origen}); se usa el ya alineado: {ghi}")
+    else:
+        de_origen = f" ni el de origen ({origen})" if origen else ""
+        raise FileNotFoundError(
+            f"No se encontró el GHI observado: ni el alineado ({ghi}){de_origen}. Descarga "
+            "el GHI anual del Explorador Solar (ver README) o quita 'solarpv.ghi' para correr "
+            "a cielo despejado.")
+    return ghi
 
 
 def _reestampar_crs(path: str, target_srid: int) -> bool:
@@ -276,7 +451,20 @@ def generar_mapa_rendimiento(
     # Remuestreo opcional del DEM para controlar runtime/memoria (ver _remuestrear_dem).
     dem_efectivo = _remuestrear_dem(dem_path, resolucion_m) if resolucion_m else dem_path
 
+    # El motor exige que el GHI calce celda a celda con el DEM que recibe: si el DEM se
+    # remuestreó, el GHI alineado al DEM original ya no calza y se realinea al remuestreado.
+    if resolucion_m and ghi:
+        ghi = alinear_ghi_a_dem(ghi, dem_efectivo,
+                                os.path.splitext(dem_efectivo)[0] + "_ghi.tif")
+
     binario_abs = _resolver_binario(binario)
+    # Con GHI observado y teselas, un binario v0.4.0 sin corregir daría rendimiento 0 o
+    # con el GHI de otra zona sin avisar: se comprueba antes de la corrida larga (una vez
+    # por binario y proceso: la etapa 10 corre tres montajes seguidos).
+    if (ghi or ghi_monthly) and tile is not None and int(tile) > 0 \
+            and binario_abs not in _BINARIOS_VERIFICADOS:
+        verificar_tile_con_ghi(binario_abs)
+
     cmd = construir_comando(
         binario_abs, dem_efectivo, out_prefix, lat, lon, date,
         mount=mount, tilt=tilt, surface_azimuth=surface_azimuth, gcr=gcr,

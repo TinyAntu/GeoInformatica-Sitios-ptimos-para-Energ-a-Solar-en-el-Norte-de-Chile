@@ -22,6 +22,7 @@ from src.postgis_validation import (
     export_postgis_sql,
     load_to_postgis_db,
 )
+from src.rutas import ruta_resultado
 
 
 def main():
@@ -80,7 +81,7 @@ def main():
         print(f"Cargando instalaciones detectadas desde archivo vectorial: {args.input_vector}")
         gdf_detected = gpd.read_file(args.input_vector)
     else:
-        raster_prob = os.path.join(directorio_raiz, "data/results/mapa_probabilidad_aptitud.tif")
+        raster_prob = ruta_resultado(config, "aptitud", "mapa_probabilidad_aptitud.tif")
         if not os.path.exists(raster_prob):
             print(
                 f"[AVISO] No se encontró {raster_prob}. Intentando usar el dataset de entrenamiento..."
@@ -122,15 +123,9 @@ def main():
     gdf_valid, gdf_invalid, report = validator.run_full_validation(gdf_detected)
 
     # 6. Guardar resultados
-    out_valid_shp = os.path.join(
-        directorio_raiz, paths_results.get("valid_sites_shp", "data/results/instalaciones_validadas.shp")
-    )
-    out_report_json = os.path.join(
-        directorio_raiz, paths_results.get("postgis_report", "data/results/reporte_validacion_postgis.json")
-    )
-    out_sql = os.path.join(
-        directorio_raiz, paths_results.get("postgis_sql", "data/results/cargar_instalaciones_postgis.sql")
-    )
+    out_valid_shp = os.path.join(directorio_raiz, paths_results["valid_sites_shp"])
+    out_report_json = os.path.join(directorio_raiz, paths_results["postgis_report"])
+    out_sql = os.path.join(directorio_raiz, paths_results["postgis_sql"])
 
     os.makedirs(os.path.dirname(out_valid_shp), exist_ok=True)
 

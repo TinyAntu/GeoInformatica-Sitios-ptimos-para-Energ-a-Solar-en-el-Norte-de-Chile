@@ -62,12 +62,15 @@ def comparar(fijo_path, seguidor_path, aptitud_path, umbral, out_json, tamano_bl
         seguidor = _alinear_rendimiento(seguidor_path, aptitud_path)
         fijo_tilt0 = _alinear_rendimiento(fijo_tilt0_path, aptitud_path) if fijo_tilt0_path else None
 
+    # Rendimiento <= 0 = celda sin dato de GHI observado en el motor: se excluye, no es una
+    # celda que produzca cero.
     base_valida = (
         (aptitud != NODATA) & np.isfinite(aptitud)
         & np.isfinite(fijo) & np.isfinite(seguidor)
+        & (fijo > 0) & (seguidor > 0)
     )
     if fijo_tilt0 is not None:
-        base_valida &= np.isfinite(fijo_tilt0)
+        base_valida &= np.isfinite(fijo_tilt0) & (fijo_tilt0 > 0)
 
     aptas = base_valida & (aptitud >= umbral)
     if not aptas.any():

@@ -58,6 +58,19 @@ class TestComparacion(unittest.TestCase):
         self.assertAlmostEqual(stats["rendimiento_fijo_aptas"]["media"], 1400.0, places=1)
         self.assertAlmostEqual(stats["rendimiento_seguidor_aptas"]["media"], 2100.0, places=1)
 
+    def test_excluye_celdas_sin_ghi(self):
+        """Rendimiento 0 (sin GHI observado) no entra a la ganancia: no es terreno que no produce."""
+        fijo = self.fijo.copy()
+        fijo[0, 0] = 0.0                      # celda apta sin GHI en el fijo
+        seg = self.seg.copy()
+        seg[1, 1] = 0.0                       # otra celda apta sin GHI en el seguidor
+        fijo_p = _escribir(os.path.join(self.dir, "fijo0.tif"), fijo)
+        seg_p = _escribir(os.path.join(self.dir, "seg0.tif"), seg)
+        stats = comparar(fijo_p, seg_p, self.apt_p, 0.70, os.path.join(self.dir, "c0.json"))
+        self.assertEqual(stats["celdas_aptas"], int((self.apt >= 0.70).sum()) - 2)
+        self.assertAlmostEqual(stats["rendimiento_fijo_aptas"]["media"], 1400.0, places=1)
+        self.assertAlmostEqual(stats["ganancia_seguidor_media_pct"], 50.0, places=1)
+
     def test_ganancia_con_tilt0(self):
         out_j = os.path.join(self.dir, "comp_tilt0.json")
         fijo_tilt0_data = np.full((4, 4), 1000.0, dtype="float32")

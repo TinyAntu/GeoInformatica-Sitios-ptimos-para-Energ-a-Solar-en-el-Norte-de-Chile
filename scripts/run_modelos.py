@@ -24,6 +24,7 @@ from src.spatial_validation import (
     asignar_bloques_espaciales,
     spatial_block_cv,
 )
+from src.rutas import dir_analisis
 
 
 # Configuraciones de features a comparar
@@ -141,8 +142,7 @@ def main():
     print(f"Caída al eliminar dist_transmision:   {delta_trans:+.4f}")
 
     # --- Guardar reporte ---
-    output_path = os.path.join(directorio_raiz, 'data/results/ablation_study.json')
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output_path = os.path.join(dir_analisis(config, 'ablacion'), 'ablation_study.json')
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump({
             'resultados': resultados,

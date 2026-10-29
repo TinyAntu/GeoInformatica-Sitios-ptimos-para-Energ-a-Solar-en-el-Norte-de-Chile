@@ -64,8 +64,28 @@ def _obtener_geotags(path):
         return None, None, []
 
 
+def _separar_sin_ghi(ren, nodata):
+    """Pasa a NaN el nodata y las celdas sin GHI (rendimiento <= 0) y devuelve la máscara de estas.
+
+    Con GHI observado, el motor deja en 0 las celdas donde el producto no tiene dato. Si ese 0
+    entrara al promedio bilineal, en el borde de esa zona saldrían rendimientos intermedios
+    falsos (mezcla de 0 y valor real, p. ej. 3 kWh/kWp) que el filtro `<= 0` de los
+    consumidores no atrapa. Por eso se interpola sin ellos y luego se reponen como 0.
+    """
+    ren = ren.astype(np.float32)
+    if nodata is not None and not np.isnan(nodata):
+        ren[ren == nodata] = np.nan
+    sin_ghi = ren <= 0
+    ren[sin_ghi] = np.nan
+    return ren, sin_ghi
+
+
 def _alinear_rendimiento(rendimiento_path, aptitud_path_o_dataset):
-    """Reproyecta el rendimiento a la grilla del mapa de aptitud (bilinear)."""
+    """Reproyecta el rendimiento a la grilla del mapa de aptitud (bilinear).
+
+    Las celdas sin GHI (0) no se interpolan: se reponen como 0 por vecino más cercano, para
+    que los consumidores las sigan contando y excluyendo como "sin GHI".
+    """
     if rasterio is not None and hasattr(aptitud_path_o_dataset, 'read'):
         base = aptitud_path_o_dataset
         destino = np.full((base.height, base.width), np.nan, dtype=np.float32)
@@ -73,14 +93,25 @@ def _alinear_rendimiento(rendimiento_path, aptitud_path_o_dataset):
             src_crs = ren.crs
             if not src_crs or not getattr(src_crs, 'is_projected', False):
                 src_crs = base.crs
+            origen, sin_ghi_origen = _separar_sin_ghi(ren.read(1), ren.nodata)
             reproject(
-                source=rasterio.band(ren, 1),
+                source=origen,
                 destination=destino,
-                src_transform=ren.transform, src_crs=src_crs, src_nodata=ren.nodata,
+                src_transform=ren.transform, src_crs=src_crs, src_nodata=np.nan,
                 dst_transform=base.transform, dst_crs=base.crs,
                 resampling=Resampling.bilinear,
                 dst_nodata=np.nan,
             )
+            if sin_ghi_origen.any():
+                sin_ghi = np.zeros(destino.shape, dtype=np.uint8)
+                reproject(
+                    source=sin_ghi_origen.astype(np.uint8),
+                    destination=sin_ghi,
+                    src_transform=ren.transform, src_crs=src_crs,
+                    dst_transform=base.transform, dst_crs=base.crs,
+                    resampling=Resampling.nearest,
+                )
+                destino[sin_ghi == 1] = 0.0
         return destino
 
     # Fallback con tifffile y scipy.ndimage si rasterio no está disponible
@@ -88,7 +119,7 @@ def _alinear_rendimiento(rendimiento_path, aptitud_path_o_dataset):
     with tifffile.TiffFile(apt_path) as ta:
         apt_shape = ta.pages[0].shape
     with tifffile.TiffFile(rendimiento_path) as tr:
-        ren = tr.asarray().astype(np.float32)
+        ren, sin_ghi_origen = _separar_sin_ghi(tr.asarray(), NODATA)
 
     scale_apt, tie_apt, _ = _obtener_geotags(apt_path)
     scale_ren, tie_ren, _ = _obtener_geotags(rendimiento_path)
@@ -105,6 +136,10 @@ def _alinear_rendimiento(rendimiento_path, aptitud_path_o_dataset):
     grid_r, grid_c = np.meshgrid(r_coords, c_coords, indexing='ij')
     coords = np.array([grid_r, grid_c])
     destino = scipy.ndimage.map_coordinates(ren, coords, order=1, mode='constant', cval=np.nan)
+    if sin_ghi_origen.any():
+        sin_ghi = scipy.ndimage.map_coordinates(sin_ghi_origen.astype(np.uint8), coords,
+                                                order=0, mode='constant', cval=0)
+        destino[sin_ghi == 1] = 0.0
     return destino.astype(np.float32)
 
 
@@ -127,7 +162,11 @@ def cruzar(aptitud_path, rendimiento_path, umbral,
         rendimiento = _alinear_rendimiento(rendimiento_path, aptitud_path)
 
     # Celdas con dato real en ambas capas (excluye nodata de aptitud y NaN de rendimiento).
-    base_valida = (aptitud != NODATA) & np.isfinite(aptitud) & np.isfinite(rendimiento)
+    # Con GHI observado, el motor deja en 0 las celdas sin dato de GHI: no son "terreno que
+    # no produce", así que también se excluyen.
+    con_dato = (aptitud != NODATA) & np.isfinite(aptitud) & np.isfinite(rendimiento)
+    sin_ghi = con_dato & (rendimiento <= 0)
+    base_valida = con_dato & ~sin_ghi
     if not base_valida.any():
         raise ValueError("El cruce no tiene celdas válidas comunes entre aptitud y rendimiento. "
                          "Revisa que ambos rasters cubran la misma zona (EPSG:32719).")
@@ -175,6 +214,7 @@ def cruzar(aptitud_path, rendimiento_path, umbral,
     stats = {
         "umbral_probabilidad": float(umbral),
         "celdas_validas": int(base_valida.sum()),
+        "celdas_excluidas_sin_ghi": int(sin_ghi.sum()),
         "celdas_aptas": int(aptas.sum()),
         "pct_aptas": round(100.0 * aptas.sum() / base_valida.sum(), 2),
         "rendimiento_region": _resumen(y_region),

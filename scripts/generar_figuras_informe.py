@@ -14,14 +14,15 @@ Paletas — todas aptas para daltonismo (deuteranopia/protanopia, la forma más 
 Uso:
     python scripts/generar_figuras_informe.py
 
-Entradas (generadas por el pipeline y los scripts de T1/T2/T3/T6-espacial/Brecha 6):
-    data/results/mapa_probabilidad_aptitud.tif, aptitud_conservador.tif, aptitud_agresivo.tif
-    data/results/rendimiento_{fijo,seguidor}_specific_yield.tif
-    data/results/aptitud_x_rendimiento.tif
-    data/results/consenso_perfiles.tif
-    data/results/shap_espacial_dominante.tif
-    data/results/comparacion_montaje.json
-Salidas: figures/*.png
+Entradas (generadas por el pipeline y los scripts de T1/T2/T3/T6-espacial/Brecha 6), cada
+una en la subcarpeta de su tema (src/rutas.py):
+    data/results/aptitud/      mapa_probabilidad_aptitud.tif, aptitud_{conservador,agresivo}.tif,
+                               consenso_perfiles.tif
+    data/results/rendimiento/  rendimiento_{fijo,seguidor}_specific_yield.tif, comparacion_montaje.json
+    data/results/cruce/        aptitud_x_rendimiento.tif
+    data/results/explicabilidad/ shap_espacial_dominante.tif
+    data/results/modelo/       metricas_topk.json, validacion_espacial.json
+Salidas: figures/<tema>/*.png
 """
 import os
 import sys
@@ -37,11 +38,13 @@ import geopandas as gpd
 import matplotlib
 matplotlib.use('Agg')  # Backend no interactivo: solo guardamos figuras
 import matplotlib.pyplot as plt
-from matplotlib import patches
+from matplotlib import patches, patheffects
 from matplotlib.colors import ListedColormap, BoundaryNorm, to_hex
 
 directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
+
+from src.rutas import ruta_resultado, ruta_figura, prefijo_rendimiento
 
 MAX_PIXELES_LADO = 2600  # tope de resolución de lectura: suficiente para 300 dpi en media página
 COLOR_TINTA = '#333333'  # texto y ejes en tinta neutra (la identidad la lleva el raster)
@@ -52,8 +55,13 @@ OKABE_ITO = ['#E69F00', '#56B4E9', '#009E73', '#F0E442',
             '#0072B2', '#D55E00', '#CC79A7']
 
 
-def leer_raster_reducido(path):
-    """Lee la banda 1 reducida a MAX_PIXELES_LADO (nearest: conserva valores y nodata)."""
+def leer_raster_reducido(path, excluir_sin_ghi=False):
+    """Lee la banda 1 reducida a MAX_PIXELES_LADO (nearest: conserva valores y nodata).
+
+    `excluir_sin_ghi=True` es para el rendimiento del motor: las celdas sin dato de GHI
+    observado salen en 0 (el ráster no declara nodata) y son "sin dato", no rendimiento bajo;
+    si quedaran, se pintarían como el valor mínimo y arrastrarían el p2 de la escala a 0.
+    """
     with rasterio.open(path) as src:
         factor = max(src.width, src.height) / MAX_PIXELES_LADO
         out_h = int(src.height / factor) if factor > 1 else src.height
@@ -63,6 +71,8 @@ def leer_raster_reducido(path):
         extent = (src.bounds.left, src.bounds.right, src.bounds.bottom, src.bounds.top)
         transform = src.transform * src.transform.scale(src.width / out_w, src.height / out_h)
     enmascarado = np.ma.masked_invalid(np.ma.masked_equal(datos, nodata))
+    if excluir_sin_ghi:
+        enmascarado = np.ma.masked_less_equal(enmascarado, 0)
     return enmascarado, extent, transform
 
 
@@ -78,12 +88,12 @@ def enmascarar_fuera_de_regiones(datos, transform, regiones):
     return np.ma.masked_array(datos, mask=(np.ma.getmaskarray(datos) | fuera))
 
 
-def calcular_percentil_combinado(paths, p_low=2, p_high=98, regiones=None):
+def calcular_percentil_combinado(paths, p_low=2, p_high=98, regiones=None, excluir_sin_ghi=False):
     """Percentiles combinados de varios rasters, para compartir una misma escala de color
     entre mapas comparables (p. ej. rendimiento fijo vs. seguidor)."""
     partes = []
     for p in paths:
-        datos, _, transform = leer_raster_reducido(p)
+        datos, _, transform = leer_raster_reducido(p, excluir_sin_ghi=excluir_sin_ghi)
         if regiones is not None:
             datos = enmascarar_fuera_de_regiones(datos, transform, regiones)
         partes.append(datos.compressed())
@@ -108,10 +118,16 @@ def dibujar_barra_escala(ax, largo_km=100):
     # con espacios fijos ('0    50    100 km'): la separación en caracteres no depende del
     # largo real de la barra, así que las marcas dejaban de coincidir con ella en cuanto
     # cambiaba la relación de aspecto del mapa.
-    for frac, etiqueta in ((0.0, '0'), (0.5, f'{largo_km // 2}'), (1.0, f'{largo_km} km')):
+    # Cada número va centrado en su marca y la unidad aparte, a la derecha de la barra: con
+    # '100 km' alineado a la derecha el texto crecía hacia la izquierda y pisaba el '50'
+    # cuando la barra era corta respecto del mapa (p. ej. el norte, más alto que ancho).
+    # El halo blanco las mantiene legibles cuando la barra cae sobre el ráster.
+    halo = [patheffects.withStroke(linewidth=2.5, foreground='white')]
+    for frac, etiqueta in ((0.0, '0'), (0.5, f'{largo_km // 2}'), (1.0, f'{largo_km}')):
         ax.text(bx + largo_m * frac, by + alto * 1.8, etiqueta,
-                fontsize=8, color=COLOR_TINTA, zorder=6,
-                ha='center' if frac < 1.0 else 'right')
+                fontsize=8, color=COLOR_TINTA, zorder=6, ha='center', path_effects=halo)
+    ax.text(bx + largo_m + 0.01 * (x1 - x0), by + alto / 2, 'km',
+            fontsize=8, color=COLOR_TINTA, zorder=6, ha='left', va='center', path_effects=halo)
 
 
 def dibujar_norte(ax):
@@ -135,7 +151,8 @@ def dibujar_leyenda_discreta(ax, colores, etiquetas, titulo_leyenda):
 def renderizar_mapa(tif_path, titulo, etiqueta_leyenda, out_png, regiones,
                     cmap='viridis', vmin=0.0, vmax=1.0,
                     discreto=False, categorias=None, colores_discretos=None,
-                    ocultar_bajo=None, nota_extra=None, recortar_a_regiones=False):
+                    ocultar_bajo=None, nota_extra=None, recortar_a_regiones=False,
+                    excluir_sin_ghi=False):
     """Renderiza un GeoTIFF con los 7 elementos cartográficos obligatorios.
 
     `discreto=True` dibuja una leyenda de parches (categorías/orden) en vez de colorbar
@@ -144,9 +161,11 @@ def renderizar_mapa(tif_path, titulo, etiqueta_leyenda, out_png, regiones,
     por debajo del umbral (p. ej. el 0 = "no apto" del mapa de consenso). `recortar_a_regiones`
     enmascara además todo píxel fuera del polígono real de `regiones` (el encuadre por
     bounding box deja pasar océano/regiones vecinas dentro del rectángulo).
+    `excluir_sin_ghi` deja en blanco las celdas del rendimiento sin dato de GHI (ver
+    `leer_raster_reducido`).
     """
     print(f"Renderizando {os.path.basename(tif_path)} ...")
-    datos, extent, transform = leer_raster_reducido(tif_path)
+    datos, extent, transform = leer_raster_reducido(tif_path, excluir_sin_ghi=excluir_sin_ghi)
     if recortar_a_regiones:
         datos = enmascarar_fuera_de_regiones(datos, transform, regiones)
     if ocultar_bajo is not None:
@@ -509,9 +528,9 @@ def main():
     regiones = gpd.read_file(regiones_path)
     regiones = regiones[regiones['REGION'].isin(['Antofagasta', 'Atacama'])].to_crs(epsg=32719)
 
-    figures_dir = os.path.join(directorio_raiz, 'figures')
-    os.makedirs(figures_dir, exist_ok=True)
-    results_dir = os.path.join(directorio_raiz, 'data', 'results')
+    # Cada entrada y cada figura en la subcarpeta de su tema (ver src/rutas.py).
+    res = lambda tema, nombre: ruta_resultado(config, tema, nombre)
+    fig = lambda tema, nombre: ruta_figura(config, tema, nombre)
 
     # --- Mapas de aptitud (perfiles) — paleta viridis, sin cambios respecto de PEP1 ---
     mapas_aptitud = [
@@ -526,54 +545,56 @@ def main():
          'Índice de aptitud WLC (0–1)', 'mapa_aptitud_agresivo.png'),
     ]
     for tif, titulo, etiqueta, png in mapas_aptitud:
-        tif_path = os.path.join(results_dir, tif)
+        tif_path = res('aptitud', tif)
         if not os.path.exists(tif_path):
             print(f"  [AVISO] No existe {tif_path}; se omite.")
             continue
-        renderizar_mapa(tif_path, titulo, etiqueta, os.path.join(figures_dir, png), regiones,
+        renderizar_mapa(tif_path, titulo, etiqueta, fig('aptitud', png), regiones,
                         cmap='viridis', vmin=0.0, vmax=1.0)
 
     # --- Rendimiento físico (motor solarpv-rs) — paleta plasma, escala compartida (T1/T3) ---
-    prefijo = config.get('solarpv', {}).get('out_prefix', 'data/results/rendimiento')
-    tif_fijo = os.path.join(directorio_raiz, prefijo + '_fijo_specific_yield.tif')
-    tif_seguidor = os.path.join(directorio_raiz, prefijo + '_seguidor_specific_yield.tif')
+    prefijo = prefijo_rendimiento(config)
+    tif_fijo = prefijo + '_fijo_specific_yield.tif'
+    tif_seguidor = prefijo + '_seguidor_specific_yield.tif'
     existentes = [p for p in (tif_fijo, tif_seguidor) if os.path.exists(p)]
     if existentes:
-        vmin_r, vmax_r = calcular_percentil_combinado(existentes, regiones=regiones)
-        nota_motor = "Motor: solarpv-rs (validado vs. pvlib ≤0.2 %), grilla 300 m."
+        vmin_r, vmax_r = calcular_percentil_combinado(existentes, regiones=regiones,
+                                                      excluir_sin_ghi=True)
+        nota_motor = ("Motor: solarpv-rs con GHI observado (Explorador Solar), grilla 90 m. "
+                      "En blanco: sin dato de GHI.")
         if os.path.exists(tif_fijo):
             renderizar_mapa(tif_fijo, 'Rendimiento fotovoltaico — montaje fijo (tilt 23°)',
                             'Rendimiento (kWh/kWp/año)',
-                            os.path.join(figures_dir, 'mapa_rendimiento_fijo.png'), regiones,
+                            fig('rendimiento', 'mapa_rendimiento_fijo.png'), regiones,
                             cmap='plasma', vmin=vmin_r, vmax=vmax_r, nota_extra=nota_motor,
-                            recortar_a_regiones=True)
+                            recortar_a_regiones=True, excluir_sin_ghi=True)
         if os.path.exists(tif_seguidor):
             renderizar_mapa(tif_seguidor, 'Rendimiento fotovoltaico — seguidor de un eje',
                             'Rendimiento (kWh/kWp/año)',
-                            os.path.join(figures_dir, 'mapa_rendimiento_seguidor.png'), regiones,
+                            fig('rendimiento', 'mapa_rendimiento_seguidor.png'), regiones,
                             cmap='plasma', vmin=vmin_r, vmax=vmax_r, nota_extra=nota_motor,
-                            recortar_a_regiones=True)
+                            recortar_a_regiones=True, excluir_sin_ghi=True)
     else:
         print("  [AVISO] No hay mapas de rendimiento; corre scripts/run_solar_yield.py primero.")
 
     # --- Cruce aptitud × rendimiento (T2) — paleta magma ---
-    tif_cruce = os.path.join(results_dir, 'aptitud_x_rendimiento.tif')
+    tif_cruce = res('cruce', 'aptitud_x_rendimiento.tif')
     if os.path.exists(tif_cruce):
         renderizar_mapa(tif_cruce, 'Ranking combinado: aptitud × rendimiento físico',
                         'Score combinado (0–1)',
-                        os.path.join(figures_dir, 'mapa_cruce_aptitud_rendimiento.png'), regiones,
+                        fig('cruce', 'mapa_cruce_aptitud_rendimiento.png'), regiones,
                         cmap='magma', vmin=0.0, vmax=1.0,
                         nota_extra="Score = probabilidad RF × rendimiento normalizado (p1-p99).")
     else:
         print("  [AVISO] No existe el cruce aptitud×rendimiento; corre scripts/run_cruce.py.")
 
     # --- Consenso entre perfiles (Brecha 6) — cividis muestreada, discreta y ordinal ---
-    tif_consenso = os.path.join(results_dir, 'consenso_perfiles.tif')
+    tif_consenso = res('aptitud', 'consenso_perfiles.tif')
     if os.path.exists(tif_consenso):
         colores_consenso = [to_hex(plt.get_cmap('cividis')(t)) for t in (0.0, 0.5, 1.0)]
         renderizar_mapa(tif_consenso, 'Consenso vs. divergencia entre perfiles de inversión',
                         'Perfiles que consideran apta la celda',
-                        os.path.join(figures_dir, 'mapa_consenso_perfiles.png'), regiones,
+                        fig('aptitud', 'mapa_consenso_perfiles.png'), regiones,
                         discreto=True, vmin=1, vmax=3,
                         categorias=['1 perfil (divergencia)', '2 perfiles (divergencia)',
                                     '3 perfiles (consenso)'],
@@ -583,13 +604,13 @@ def main():
         print("  [AVISO] No existe el mapa de consenso; corre scripts/run_consenso.py.")
 
     # --- Variable dominante SHAP (Brecha 8) — paleta Okabe-Ito, discreta y nominal ---
-    tif_dominante = os.path.join(results_dir, 'shap_espacial_dominante.tif')
+    tif_dominante = res('explicabilidad', 'shap_espacial_dominante.tif')
     if os.path.exists(tif_dominante):
         etiquetas_shap = ['Pendiente', 'GHI', 'Elevación', 'Northness',
                           'Dist. transmisión', 'Dist. almacenam.', 'Dist. subestaciones']
         renderizar_mapa(tif_dominante, 'Variable dominante en la decisión de aptitud (SHAP espacial)',
                         'Variable con mayor |SHAP|',
-                        os.path.join(figures_dir, 'mapa_shap_dominante.png'), regiones,
+                        fig('explicabilidad', 'mapa_shap_dominante.png'), regiones,
                         discreto=True, vmin=0, vmax=6,
                         categorias=etiquetas_shap, colores_discretos=OKABE_ITO[:7],
                         nota_extra="TreeExplainer sobre model_rf.pkl (sin re-entrenar), grilla 500 m.")
@@ -597,19 +618,19 @@ def main():
         print("  [AVISO] No existe el mapa de variable dominante; corre scripts/run_shap_spatial.py.")
 
     # --- Comparación fijo vs. seguidor (T3) — gráfico de barras, no es un mapa ---
-    json_comparacion = os.path.join(results_dir, 'comparacion_montaje.json')
+    json_comparacion = res('rendimiento', 'comparacion_montaje.json')
     if os.path.exists(json_comparacion):
         renderizar_comparacion_montaje(json_comparacion,
-                                       os.path.join(figures_dir, 'comparacion_fijo_vs_seguidor.png'))
+                                       fig('rendimiento', 'comparacion_fijo_vs_seguidor.png'))
     else:
         print("  [AVISO] No existe comparacion_montaje.json; corre scripts/run_comparacion_montaje.py.")
 
     # --- Métricas de validación vs. umbrales de PEP1 — panel de 3 gráficos, no es un mapa ---
-    json_topk = os.path.join(results_dir, 'metricas_topk.json')
-    json_validacion = os.path.join(results_dir, 'validacion_espacial.json')
+    json_topk = res('modelo', 'metricas_topk.json')
+    json_validacion = res('modelo', 'validacion_espacial.json')
     if os.path.exists(json_topk) and os.path.exists(json_validacion):
         renderizar_metricas_validacion(json_topk, json_validacion,
-                                       os.path.join(figures_dir, 'metricas_validacion.png'))
+                                       fig('modelo', 'metricas_validacion.png'))
     else:
         print("  [AVISO] Faltan metricas_topk.json o validacion_espacial.json; "
               "corre scripts/run_metricas_topk.py.")

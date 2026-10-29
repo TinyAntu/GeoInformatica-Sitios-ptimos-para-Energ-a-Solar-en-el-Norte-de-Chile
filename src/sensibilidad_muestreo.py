@@ -125,8 +125,12 @@ def evaluar_estrategia_individual(
     random_state: int = 42,
     tamano_bloque_km: float = 30.0,
     regiones_gdf: gpd.GeoDataFrame = None,
+    lineas_criterio: gpd.GeoDataFrame = None,
 ) -> dict:
     """Genera dataset, entrena y evalúa una estrategia específica de pseudo-ausencias.
+
+    `lineas_criterio`: red completa contra la que se mide el criterio de pseudo-ausencias
+    cuando `vectores` trae la red sin infraestructura dedicada (ver src/sampling.py).
 
     Retorna un diccionario con métricas SBCV, importancias SHAP y distribución de negativos.
     """
@@ -143,6 +147,7 @@ def evaluar_estrategia_individual(
         ratio=ratio,
         random_state=random_state,
         estrategia_negativos=estrategia,
+        lineas_criterio=lineas_criterio,
     )
 
     n_sample_neg = min(int(len(positivas) * ratio), len(pool_negativos))
@@ -315,6 +320,9 @@ def analizar_sensibilidad_muestreo(
     `config['paths']` debe venir ya resuelto a rutas absolutas (`src.utils._resolver_rutas`).
     """
     from src.preprocessing import cargar_capas_vectoriales
+    from src.infraestructura import (
+        control_fuga_activo, generar_capas_sin_dedicadas, rutas_vectores_efectivas,
+    )
 
     # Los hiperparámetros se resuelven ANTES de cargar nada pesado: si falta el modelo
     # entrenado, conviene abortar en el primer segundo y no tras leer las 8 capas vectoriales.
@@ -325,7 +333,15 @@ def analizar_sensibilidad_muestreo(
 
     paths_raw = config['paths']['raw']
     processed = config['paths']['processed']
-    vectores = cargar_capas_vectoriales(paths_raw['vectores'])
+    # Misma red que el entrenamiento del pipeline (control de fuga, src/infraestructura.py):
+    # las variables sin infraestructura dedicada y el criterio de pseudo-ausencias contra la
+    # red completa. En el diseño 'grupo_objetivo' el dominio de muestreo (entorno de
+    # subestaciones y almacenamiento) también queda sin la infraestructura de las plantas.
+    if control_fuga_activo(config):
+        generar_capas_sin_dedicadas(config)  # se omite sola si ya están al día
+    vectores = cargar_capas_vectoriales(rutas_vectores_efectivas(config))
+    lineas_criterio = (gpd.read_file(paths_raw['vectores']['lineas'])
+                       if control_fuga_activo(config) else None)
     rutas_rasters = {
         'ghi_32719': processed['ghi_32719'],
         'slope':     processed['slope'],
@@ -355,6 +371,7 @@ def analizar_sensibilidad_muestreo(
             random_state=ml.get('random_state', 42),
             tamano_bloque_km=tamano_bloque,
             regiones_gdf=regiones_gdf,
+            lineas_criterio=lineas_criterio,
         )
         resultados_estrategias[est] = res
 

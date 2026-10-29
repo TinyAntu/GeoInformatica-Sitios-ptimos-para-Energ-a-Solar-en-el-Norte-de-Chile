@@ -1,7 +1,7 @@
 """CLI: explicabilidad SHAP del modelo de aptitud (T6, deuda de PEP1).
 
 Genera el summary plot SHAP (global) y, si existe el mapa de rendimiento, el cruce
-aptitud–rendimiento. No re-entrena: usa data/results/model_rf.pkl.
+aptitud–rendimiento. No re-entrena: usa data/results/modelo/model_rf.pkl.
 
 Uso:
     python scripts/run_shap.py --config config.yaml
@@ -19,6 +19,7 @@ directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(directorio_raiz)
 
 from src.explainability import explicar
+from src.rutas import ruta_resultado, dir_figuras, prefijo_rendimiento
 
 
 def _ruta_abs(ruta: str) -> str:
@@ -34,15 +35,13 @@ def main():
         config = yaml.safe_load(f)
 
     results = config['paths']['results']
-    model_path = _ruta_abs(results.get('model_rf', 'data/results/model_rf.pkl'))
-    dataset_path = _ruta_abs(results.get('dataset_ml', 'data/results/dataset_entrenamiento_rf.shp'))
-    figures_dir = _ruta_abs('figures')
-    out_json = _ruta_abs('data/results/shap_importancias.json')
+    model_path = _ruta_abs(results['model_rf'])
+    dataset_path = _ruta_abs(results['dataset_ml'])
+    figures_dir = dir_figuras(config, 'explicabilidad')
+    out_json = ruta_resultado(config, 'explicabilidad', 'shap_importancias.json')
 
     # Rendimiento del montaje fijo (T1) para el cruce, si está disponible.
-    cfg_solar = config.get('solarpv', {})
-    rendimiento_path = _ruta_abs(cfg_solar.get('out_prefix', 'data/results/rendimiento')
-                                 + '_fijo_specific_yield.tif')
+    rendimiento_path = prefijo_rendimiento(config) + '_fijo_specific_yield.tif'
 
     if not os.path.exists(model_path):
         print(f"  [ERROR] No existe el modelo ({model_path}). Corre el pipeline primero.")

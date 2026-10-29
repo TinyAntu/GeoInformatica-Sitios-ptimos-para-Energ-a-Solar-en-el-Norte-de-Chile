@@ -22,6 +22,7 @@ from src.spatial_validation import (
     guardar_reporte_validacion,
 )
 from src.features import FEATURES
+from src.rutas import ruta_resultado, ruta_figura
 
 
 def main():
@@ -82,20 +83,17 @@ def main():
 
     # --- Artefactos ---
     print("\n[4/4] Guardando artefactos...")
-    figures_dir = os.path.join(directorio_raiz, 'figures')
-    os.makedirs(figures_dir, exist_ok=True)
-
     graficar_folds_espaciales(
         muestras.loc[sbcv['indices_evaluados']],
         fold_assignment=sbcv['fold_assignment'],
         regiones_gdf=regiones,
-        output_path=os.path.join(figures_dir, 'sbcv_distribucion_folds.png'),
+        output_path=ruta_figura(config, 'modelo', 'sbcv_distribucion_folds.png'),
         tamano_bloque_km=tam_km,
     )
 
     guardar_reporte_validacion(
         sbcv, lorocv,
-        output_path=os.path.join(directorio_raiz, 'data/results/validacion_espacial.json'),
+        output_path=ruta_resultado(config, 'modelo', 'validacion_espacial.json'),
     )
 
     # --- Resumen ejecutivo ---

@@ -22,12 +22,36 @@ paths:
     dem_32719: "data/processed/dem_norte_32719.tif"
     slope:     "data/processed/slope_norte.tif"
     aspect:    "data/processed/aspect_norte.tif"
+    # Capas de subestaciones, líneas y almacenamiento SIN infraestructura dedicada (ver
+    # `control_fuga`). Las genera la etapa 1-2 a partir de las capas crudas.
+    infraestructura: "data/processed/infraestructura"
+  # Raíces de los resultados. Debajo de `base` y `figuras` cada producto va a una subcarpeta
+  # por tema (modelo, aptitud, rendimiento, cruce, explicabilidad, postgis): la tabla de qué va
+  # en cada una está en src/rutas.py. Los estudios fuera del pipeline van a `analisis`.
   results:
-    dataset_ml: "data/results/dataset_entrenamiento_rf.shp"
-    model_rf:   "data/results/model_rf.pkl"
-    postgis_sql: "data/results/cargar_instalaciones_postgis.sql"
-    postgis_report: "data/results/reporte_validacion_postgis.json"
-    valid_sites_shp: "data/results/instalaciones_optimas_validadas.shp"
+    base:             "data/results"
+    figuras:          "figures"
+    analisis:         "data/results/analisis"
+    figuras_analisis: "figures/analisis"
+    historico:        "data/results/historico"
+    dataset_ml: "data/results/modelo/dataset_entrenamiento_rf.shp"
+    model_rf:   "data/results/modelo/model_rf.pkl"
+    postgis_sql: "data/results/postgis/cargar_instalaciones_postgis.sql"
+    postgis_report: "data/results/postgis/reporte_validacion_postgis.json"
+    valid_sites_shp: "data/results/postgis/instalaciones_optimas_validadas.shp"
+
+# Control de fuga temporal en las distancias a infraestructura (src/infraestructura.py).
+# Las capas del CEN incluyen subestaciones, líneas y almacenamiento DEDICADOS, construidos para
+# las propias plantas: medir distancias contra ellos es causalidad inversa ("hay red porque hay
+# planta"). Con `excluir_dedicadas: true` todo el pipeline (muestreo, mapa, perfiles AHP, SHAP,
+# métricas y transferencia) usa la red sin infraestructura dedicada. Evidencia y cifras en
+# data/results/analisis/auditoria_infraestructura/README.md. `false` reproduce el pipeline original.
+#
+# El criterio de pseudo-ausencias `criterios.dist_max` (distancia a transmisión) se sigue
+# midiendo contra la red COMPLETA, para conservar exactamente los mismos puntos de
+# entrenamiento: solo cambian las variables que ve el modelo.
+control_fuga:
+  excluir_dedicadas: true
 
 # Configuración de validación y carga en PostGIS
 postgis_validation:
@@ -63,17 +87,44 @@ solarpv:
   lon: -69.5          # longitud de referencia
   date: "2026-01-01"  # fecha base para la simulación anual
   dem: "data/processed/dem_norte_32719.tif"  # DEM de entrada (mismo del pipeline)
-  out_prefix: "data/results/rendimiento"     # salida: data/results/rendimiento_specific_yield.tif
+  # Salida: data/results/rendimiento/rendimiento{_fijo,_fijo_tilt0,_seguidor}_*.tif (y lo mismo
+  # dentro de la carpeta de cada zona); el prefijo lo fija src/rutas.py::prefijo_rendimiento.
   # Procesamiento por teselas (solarpv-rs v0.4.0):
   # Con --tile el pico de memoria lo fija una tesela, permitiendo correr a resolución nativa (~90 m) sin saturar RAM.
+  # tile y horizon_radius van en CELDAS (1024 × 90 m ≈ 92 km); la resolución la fija el DEM.
+  # Con GHI observado, --tile exige el motor corregido (parches/solarpv-rs_tile_ghi_origen.patch):
+  # en v0.4.0 original cada tesela lee el GHI con índices locales. El pipeline lo verifica
+  # antes de correr (src/solar_yield.py::verificar_tile_con_ghi).
   tile: 1024
   # Remuestreo del DEM antes de correr el motor (null = resolución nativa del DEM con teselas si se quiere acelerar poner en 300).
   resolucion_m: null
   horizon_radius: 100
+  # GHI observado (indicación del profesor): reescala el modelo de cielo despejado con el GHI
+  # anual medio diario del Explorador Solar, que capta la nubosidad costera (camanchaca).
+  # Fuente: http://walker.dgf.uchile.cl/Explorador/Solar3/sig/ghi-m00-ll.tif (EPSG:4326, ~1 km,
+  # kWh/m²/día: 6-8 sobre el desierto). Se alinea (bilineal) a la grilla exacta del DEM en
+  # EPSG:32719 antes de correr el motor (src/solar_yield.py::alinear_ghi_a_dem); las celdas
+  # sin GHI quedan con rendimiento 0 y se excluyen de cruce, comparación y desacople.
+  # Si se fija resolucion_m, generar_mapa_rendimiento realinea el GHI al DEM remuestreado.
+  ghi_origen: "data/raw/ghi_explorador_anual.tif"
+  ghi: "data/processed/ghi_explorador_32719.tif"
+  ghi_unit: "kwh"
   montaje:
     tilt: 23            # inclinación (grados) para montaje fijo
     surface_azimuth: 0  # azimut de la superficie (0 = mirando al norte en HS)
     gcr: 0.3            # ground coverage ratio para el seguidor de un eje
+
+# Análisis aparte, FUERA del pipeline (scripts/run_comparar_tiles.py): compara, sobre recortes
+# del DEM con el GHI observado, el motor sin --tile, el motor con --tile y un teselado hecho
+# desde Python (recorta DEM y GHI con la misma ventana y corre el motor sin --tile por tesela).
+# Con --binario-original agrega solarpv-rs v0.4.0 sin corregir, para mostrar su error.
+comparar_tiles:
+  dir_resultados: "data/results/analisis/comparar_tiles"
+  tamano: 1000        # lado de cada recorte, en celdas (1000 × 90 m = 90 km)
+  tesela: 256         # --tile de la comparación, en celdas (varias teselas por recorte)
+  recortes:           # esquina noroeste de cada recorte (grados)
+    costa_antofagasta:    {lat: -23.20, lon: -70.75}   # esquina NO en el mar (sin GHI)
+    interior_maria_elena: {lat: -22.10, lon: -69.95}   # GHI en todo el recorte
 
 # Parámetros AHP y criterios de elegibilidad para candidatos negativos
 criterios:
@@ -123,6 +174,8 @@ transferibilidad:
   dem:      "data/processed/dem_coquimbo_32719.tif"
   slope:    "data/processed/slope_coquimbo.tif"
   aspect:   "data/processed/aspect_coquimbo.tif"
+  # GHI observado alineado al DEM de Coquimbo (mismo origen que solarpv.ghi_origen).
+  ghi:      "data/processed/ghi_explorador_coquimbo_32719.tif"
   # Misma resolución de grilla que el LORO del norte (shap_espacial/perfiles_inversion), para
   # que las cifras sean comparables sin corregir por resolución.
   resolucion_m: 500
@@ -152,7 +205,15 @@ auditoria_infraestructura:
   # la infraestructura de conexión se construye junto con el proyecto, no en la fecha exacta
   # de su entrada en operación.
   margen_meses: 12
-  dir_resultados: "data/results/auditoria_infraestructura"
+  dir_resultados: "data/results/analisis/auditoria_infraestructura"
+  # Hiperparámetros del estudio sin --optimizar: los del modelo ORIGINAL publicado (con fuga),
+  # que es la referencia de la ablación. Fijos aquí para que reentrenar el pipeline (ahora sin
+  # fuga, 800/14/2) no cambie las cifras del estudio. Sin este bloque se usan los de
+  # model_rf_metrics.json.
+  hiperparametros_fijos:
+    n_estimators: 600
+    max_depth: 10
+    min_samples_leaf: 2
 
 # Grilla de salida del mapa de aptitud ML (hallazgo 2.1)
 salida_mapa:
@@ -197,7 +258,7 @@ consenso_perfiles:
 
 # Perfiles de inversión (pesos AHP/WLC). El perfil 'balanceado' se carga dinámicamente
 # desde los resultados del modelo ML.
-# Lectura fijo vs. seguidor (T3, data/results/comparacion_montaje.json): sobre nuestro DEM
+# Lectura fijo vs. seguidor (T3, data/results/rendimiento/comparacion_montaje.json): sobre nuestro DEM
 # el seguidor de un eje rinde ~+52% sobre el montaje fijo en las zonas aptas (por encima
 # del ~+36% de referencia del autor del motor). El perfil 'agresivo' (prioriza
 # radiación/rendimiento) capitaliza esa ganancia; el 'conservador' (prioriza cercanía a

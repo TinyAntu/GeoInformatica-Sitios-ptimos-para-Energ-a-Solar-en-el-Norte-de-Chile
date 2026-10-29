@@ -30,6 +30,7 @@ from src.explainability_spatial import _construir_features, zona_de_config
 from src.metricas_topk import cargar_plantas, _plantas_a_filas_columnas
 from src.transferibilidad import cargar_muestras_entrenamiento, RENAME_ESRI
 from src.utils import _resolver_rutas, _ruta_abs
+from src.rutas import dir_analisis
 
 
 def evaluar_aoa_en_grilla(config, modelo, zona, X_train, out_dir=None):
@@ -73,7 +74,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', default='config.yaml')
     parser.add_argument('--out-json', default=None,
-                        help='Ruta de salida (por defecto data/results/aoa_comparacion.json)')
+                        help='Ruta de salida (por defecto data/results/analisis/aoa_lorocv/aoa_comparacion.json)')
     args = parser.parse_args()
 
     ruta_config = _ruta_abs(args.config)
@@ -82,7 +83,7 @@ def main():
     config['paths'] = _resolver_rutas(config['paths'])
 
     out_json = _ruta_abs(args.out_json) if args.out_json else os.path.join(
-        directorio_raiz, 'data', 'results', 'aoa_comparacion.json'
+        dir_analisis(config, 'aoa_lorocv'), 'aoa_comparacion.json'
     )
     os.makedirs(os.path.dirname(out_json), exist_ok=True)
 
@@ -106,7 +107,6 @@ def main():
     print("\n[1/3] Evaluando AOA In-sample (Antofagasta + Atacama)...")
     zona_norte = zona_de_config(config, 'zona_estudio')
     zona_norte['resolucion_m'] = 500  # Homogéneo para comparación
-    dir_norte = os.path.join(directorio_raiz, 'data', 'results')
     res_in_sample = evaluar_aoa_en_grilla(config, modelo_completo, zona_norte, X_train_full, out_dir=None)
     resultados['in_sample_norte'] = res_in_sample
     print(f"  -> Dentro de AOA: {res_in_sample['pct_dentro_aoa']:.1f}% | Fuera: {res_in_sample['pct_fuera_aoa']:.1f}% | DI mediano: {res_in_sample['estadisticas_di_zona']['mediana']:.3f}")
@@ -165,7 +165,9 @@ def main():
 
         zona_coquimbo = zona_de_config(config, 'transferibilidad')
         zona_coquimbo['resolucion_m'] = bloque_transf.get('resolucion_m', 500)
-        dir_coquimbo = _ruta_abs(bloque_transf.get('dir_resultados', 'data/results/coquimbo'))
+        # Sus rásters DI/AOA van a la carpeta del análisis, no a la de Coquimbo del pipeline:
+        # un estudio aparte no debe pisar los productos de la fase 5.
+        dir_coquimbo = os.path.join(dir_analisis(config, 'aoa_lorocv'), 'coquimbo')
         res_coquimbo = evaluar_aoa_en_grilla(config, modelo_completo, zona_coquimbo, X_train_full, out_dir=dir_coquimbo)
         resultados['transferencia_coquimbo'] = res_coquimbo
         print(f"  -> Coquimbo dentro de AOA: {res_coquimbo['pct_dentro_aoa']:.1f}% | Fuera de AOA: {res_coquimbo['pct_fuera_aoa']:.1f}% | DI mediano: {res_coquimbo['estadisticas_di_zona']['mediana']:.3f}")

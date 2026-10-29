@@ -30,6 +30,7 @@ sys.path.append(directorio_raiz)
 
 from src.metricas_topk import KS_DEFECTO
 from src.explainability_spatial import zona_de_config
+from src.rutas import ruta_resultado, dir_resultados
 from src.transferibilidad import (
     evaluar_zona, escribir_mapa_aptitud,
     cargar_muestras_entrenamiento, diagnostico_covariate_shift,
@@ -63,8 +64,8 @@ def main():
     ks = tuple(float(k) for k in args.ks.split(',')) if args.ks else KS_DEFECTO
     resolucion_m = bloque.get('resolucion_m', 500)
     ha_por_mw = bloque.get('ha_por_mw', 2.0)
-    dir_res = _ruta_abs(bloque.get('dir_resultados', f'data/results/{args.zona}'))
-    os.makedirs(dir_res, exist_ok=True)
+    # Mapa en aptitud/; métricas, AOA y DI en transferibilidad/ (ver src/rutas.py).
+    dir_transf = dir_resultados(config, 'transferibilidad', args.zona)
 
     modelo = joblib.load(_ruta_abs(config['paths']['results']['model_rf']))
     zona = zona_de_config(config, args.zona)
@@ -77,7 +78,7 @@ def main():
     res, X, extras = evaluar_zona(config, directorio_raiz, modelo, zona,
                                   resolucion_m, ks=ks, ha_por_mw=ha_por_mw)
 
-    ruta_mapa = os.path.join(dir_res, 'mapa_probabilidad_aptitud.tif')
+    ruta_mapa = ruta_resultado(config, 'aptitud', 'mapa_probabilidad_aptitud.tif', args.zona)
     escribir_mapa_aptitud(extras, ruta_mapa)
     print(f"  Mapa de aptitud -> {os.path.relpath(ruta_mapa, directorio_raiz)}")
 
@@ -91,7 +92,7 @@ def main():
         X_zona=X,
         valido=extras['valido'],
         extras=extras,
-        dir_salida=dir_res,
+        dir_salida=dir_transf,
         plantas_rc=extras.get('plantas_rc'),
     )
 
@@ -132,7 +133,7 @@ def main():
             'metricas': res_comp,
         }
 
-    ruta_json = os.path.join(dir_res, 'metricas_transferibilidad.json')
+    ruta_json = os.path.join(dir_transf, 'metricas_transferibilidad.json')
     with open(ruta_json, 'w', encoding='utf-8') as f:
         json.dump(salida, f, indent=2, ensure_ascii=False)
 

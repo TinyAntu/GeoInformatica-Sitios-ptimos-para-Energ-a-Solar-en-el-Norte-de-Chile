@@ -16,6 +16,8 @@ sys.path.append(directorio_raiz)
 
 from src.explainability_spatial import zona_de_config
 from src.ahp import pesos_perfil  # AHP formal con Ratio de Consistencia (hallazgo 3.3)
+from src.infraestructura import rutas_vectores_efectivas
+from src.rutas import ruta_resultado
 # Grilla de referencia = DEM (no GHI ~1 km), igual que generate_suitability_map.py
 # (hallazgo 2.1, opción B): mismo criterio para que los mapas AHP sean comparables con el RF.
 from scripts.generate_suitability_map import construir_grilla_referencia
@@ -79,7 +81,7 @@ def main():
     parser.add_argument('--zona', default=None,
                         help='Clave de config.yaml con otra zona (p. ej. "transferibilidad"). '
                              'Sin este flag procesa la zona de entrenamiento y escribe en '
-                             'data/results, como siempre.')
+                             'data/results/aptitud/, como siempre.')
     args = parser.parse_args()
 
     print("=== INICIANDO GENERACIÓN DE PERFILES DE INVERSIÓN (AHP) ===")
@@ -96,9 +98,6 @@ def main():
     
     zona = zona_de_config(config, args.zona or 'zona_estudio')
     bloque_zona = (config.get(args.zona) or {}) if args.zona else {}
-    dir_salida = os.path.join(
-        directorio_raiz, bloque_zona.get('dir_resultados', 'data/results'))
-    os.makedirs(dir_salida, exist_ok=True)
     perfiles_config = config.get('perfiles_inversion', {})
     ahp_config = config.get('ahp_perfiles', {})  # matrices AHP por perfil (opcional)
 
@@ -156,18 +155,22 @@ def main():
     # 5. Calcular distancias euclidianas a infraestructura
     print("Calculando distancias a infraestructura en memoria...")
     pixel_size = transform[0]
-    
-    lineas_path = os.path.join(directorio_raiz, paths_raw['vectores']['lineas'])
+    # Misma red que el resto del pipeline: sin infraestructura dedicada si el control de fuga
+    # está activo (src/infraestructura.py). Una línea o subestación dedicada es privada de una
+    # central y no está disponible para conectar un proyecto nuevo.
+    vectores_red = rutas_vectores_efectivas(config)
+
+    lineas_path = os.path.join(directorio_raiz, vectores_red['lineas'])
     lineas_gdf = gpd.read_file(lineas_path).to_crs(crs)
     dist_t_data = get_distance_raster_from_vector(lineas_gdf, grid_shape, transform, pixel_size)
 
-    almacen_path = paths_raw['vectores'].get('almacenamiento')
+    almacen_path = vectores_red.get('almacenamiento')
     if almacen_path:
         almacen_path = os.path.join(directorio_raiz, almacen_path)
     almacen_gdf = gpd.read_file(almacen_path).to_crs(crs) if almacen_path and os.path.exists(almacen_path) else None
     dist_a_data = get_distance_raster_from_vector(almacen_gdf, grid_shape, transform, pixel_size)
 
-    subs_path = paths_raw['vectores'].get('subestaciones')
+    subs_path = vectores_red.get('subestaciones')
     if subs_path:
         subs_path = os.path.join(directorio_raiz, subs_path)
     subs_gdf = gpd.read_file(subs_path).to_crs(crs) if subs_path and os.path.exists(subs_path) else None
@@ -238,7 +241,7 @@ def main():
                     mapa_wlc[(mask_excl == 1) & (mapa_wlc != -9999.0)] = 0.0
 
         # Guardar en disco
-        out_path = os.path.join(dir_salida, f'aptitud_{nombre_perfil}.tif')
+        out_path = ruta_resultado(config, 'aptitud', f'aptitud_{nombre_perfil}.tif', args.zona)
         with rasterio.open(out_path, 'w', **meta_base) as dst:
             dst.write(mapa_wlc, 1)
         print(f" -> Guardado exitosamente: {out_path}")

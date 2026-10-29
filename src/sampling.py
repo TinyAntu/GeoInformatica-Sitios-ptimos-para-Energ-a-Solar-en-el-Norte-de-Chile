@@ -58,6 +58,7 @@ def generar_dataset_muestras(
     ratio: int = 3,
     random_state: int = 42,
     estrategia_negativos: str = 'ahp_filtrado',
+    lineas_criterio: gpd.GeoDataFrame | None = None,
 ) -> tuple:
     """
     Genera muestras positivas (plantas existentes) y un pool de negativos geográficamente 
@@ -76,6 +77,12 @@ def generar_dataset_muestras(
 
     'fondo_objetivo' se acepta como alias en desuso de 'sin_filtros_geofisicos': era el nombre
     original, pero describía mal lo que hacía (no era un fondo de grupo objetivo).
+
+    `lineas_criterio` (control de fuga, ver src/infraestructura.py): cuando `vectores['lineas']`
+    trae la red SIN líneas dedicadas, el criterio de pseudo-ausencias "distancia a transmisión
+    <= dist_max" se mide contra esta otra capa (la red completa). Así el sorteo de negativos y
+    por lo tanto los puntos de entrenamiento no cambian: solo cambia la variable
+    `dist_transmision` que ve el modelo. Si es None, criterio y variable usan la misma capa.
     """
     ALIAS_EN_DESUSO = {'fondo_objetivo': 'sin_filtros_geofisicos'}
     if estrategia_negativos in ALIAS_EN_DESUSO:
@@ -107,15 +114,20 @@ def generar_dataset_muestras(
         )
     ].to_crs(epsg=32719)
     
-    if 'REGION' in vectores['lineas'].columns:
-        lineas_norte = vectores['lineas'][
-            vectores['lineas']['REGION'].astype(str).str.upper().str.strip().isin(
-                [str(c).upper().strip() for c in codigos_norte]
-            )
-        ].to_crs(epsg=32719)
-    else:
+    def _lineas_de_la_zona(capa):
+        if 'REGION' in capa.columns:
+            return capa[
+                capa['REGION'].astype(str).str.upper().str.strip().isin(
+                    [str(c).upper().strip() for c in codigos_norte]
+                )
+            ].to_crs(epsg=32719)
         print("\n[ALERTA] La capa de líneas NO tiene una columna 'REGION'. Recortando espacialmente...")
-        lineas_norte = gpd.clip(vectores['lineas'], regiones_norte).to_crs(epsg=32719)
+        return gpd.clip(capa, regiones_norte).to_crs(epsg=32719)
+
+    lineas_norte = _lineas_de_la_zona(vectores['lineas'])
+    # Red contra la que se mide el criterio `dist_max` de las pseudo-ausencias (ver docstring).
+    lineas_criterio_norte = (_lineas_de_la_zona(lineas_criterio)
+                             if lineas_criterio is not None else None)
 
     def _clip_spatially(layer, nombre):
         if layer is None or len(layer) == 0:
@@ -142,6 +154,9 @@ def generar_dataset_muestras(
     # Limpieza estructural de geometrías nulas o vacías
     regiones_norte = regiones_norte[regiones_norte.geometry.notna() & ~regiones_norte.geometry.is_empty]
     lineas_norte = lineas_norte[lineas_norte.geometry.notna() & ~lineas_norte.geometry.is_empty]
+    if lineas_criterio_norte is not None:
+        lineas_criterio_norte = lineas_criterio_norte[
+            lineas_criterio_norte.geometry.notna() & ~lineas_criterio_norte.geometry.is_empty]
     almacen_norte = almacen_norte[almacen_norte.geometry.notna() & ~almacen_norte.geometry.is_empty]
     subestaciones_norte = subestaciones_norte[subestaciones_norte.geometry.notna() & ~subestaciones_norte.geometry.is_empty]
 
@@ -330,6 +345,18 @@ def generar_dataset_muestras(
     negativos_pre = negativos_pre.dropna(subset=['ghi', 'slope', 'aspect', 'elev', 'northness', 'dist_transmision', 'dist_almacen', 'dist_subestaciones'])
     print(f"  Negativos tras limpiar NaN: {len(negativos_pre)}")
 
+    # Distancia que decide el criterio `dist_max`. Con control de fuga se mide contra la red
+    # completa (`lineas_criterio`) para no alterar el sorteo; es una serie local y no una
+    # columna: no debe llegar al shapefile, donde ESRI la truncaría a 'dist_trans' y chocaría
+    # con `dist_transmision` (invariante 2 de AGENTS.md).
+    red_criterio = lineas_criterio_norte if lineas_criterio_norte is not None else lineas_norte
+    hay_red_criterio = len(red_criterio) > 0
+    if lineas_criterio_norte is not None and hay_red_criterio:
+        dist_criterio = negativos_pre.geometry.apply(
+            lambda g: lineas_criterio_norte.geometry.distance(g).min())
+    else:
+        dist_criterio = negativos_pre['dist_transmision']
+
     if estrategia_negativos == 'ahp_filtrado':
         # Filtros AHP completos: GHI, pendiente, elevación y distancia máxima a transmisión
         filtro = (
@@ -337,8 +364,8 @@ def generar_dataset_muestras(
             (negativos_pre['slope'] <= criterios['slope_max']) &
             (negativos_pre['elev']  <= criterios['elev_max'])
         )
-        if len(lineas_norte) > 0:
-            filtro &= (negativos_pre['dist_transmision'] <= criterios.get('dist_max', 20000))
+        if hay_red_criterio:
+            filtro &= (dist_criterio <= criterios.get('dist_max', 20000))
         pool_negativos = negativos_pre[filtro].copy()
 
     elif estrategia_negativos == 'fondo_aleatorio':
@@ -348,8 +375,8 @@ def generar_dataset_muestras(
     elif estrategia_negativos == 'sin_filtros_geofisicos':
         # Ablación de la línea base: conserva solo la accesibilidad a red (dist_transmision
         # <= dist_max) y suelta pendiente, elevación y GHI.
-        if len(lineas_norte) > 0:
-            filtro = (negativos_pre['dist_transmision'] <= criterios.get('dist_max', 20000))
+        if hay_red_criterio:
+            filtro = (dist_criterio <= criterios.get('dist_max', 20000))
             pool_negativos = negativos_pre[filtro].copy()
         else:
             pool_negativos = negativos_pre.copy()
