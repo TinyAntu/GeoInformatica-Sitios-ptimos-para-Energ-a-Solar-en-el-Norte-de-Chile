@@ -21,7 +21,8 @@ import joblib
 import rasterio
 from rasterio.warp import reproject, Resampling
 from rasterio.features import rasterize
-from scipy.stats import spearmanr
+from scipy.spatial.distance import pdist, squareform
+from scipy.stats import rankdata, spearmanr, t as student_t
 from sklearn.ensemble import RandomForestClassifier
 
 from src.features import FEATURES
@@ -273,8 +274,8 @@ def alinear_y_cruzar(aptitud_path: str, rendimiento_path: str, umbral: float = 0
     }
 
 
-def asignar_bloques_a_celdas(transform, mascara: np.ndarray, tamano_bloque_km: float = 30.0) -> np.ndarray:
-    """Calcula el identificador único de bloque espacial de 30 km para cada celda en la máscara."""
+def _asignar_grilla_bloques(transform, mascara: np.ndarray, tamano_bloque_km: float = 30.0) -> dict:
+    """Asigna coordenadas UTM, bloques regulares y superbloques 2x2 a las celdas válidas."""
     rows, cols = np.where(mascara)
     xs = transform[2] + cols * transform[0] + transform[0] / 2.0
     ys = transform[5] + rows * transform[4] + transform[4] / 2.0
@@ -282,16 +283,360 @@ def asignar_bloques_a_celdas(transform, mascara: np.ndarray, tamano_bloque_km: f
     bx = np.floor(xs / bloque_m).astype(np.int64)
     by = np.floor(ys / bloque_m).astype(np.int64)
     block_ids = bx * 1_000_003 + by
-    return block_ids
+    # Agrupación jerárquica 2x2: cada superbloque cubre (2 * tamano_bloque_km)^2
+    sbx = bx // 2
+    sby = by // 2
+    superblock_ids = sbx * 1_000_003 + sby
+    return {
+        'xs': xs,
+        'ys': ys,
+        'block_ids': block_ids,
+        'superblock_ids': superblock_ids,
+    }
+
+
+def asignar_bloques_a_celdas(transform, mascara: np.ndarray, tamano_bloque_km: float = 30.0) -> np.ndarray:
+    """Calcula el identificador único de bloque espacial de 30 km para cada celda en la máscara."""
+    return _asignar_grilla_bloques(transform, mascara, tamano_bloque_km)['block_ids']
+
+
+def _agregar_por_bloques(apt_vals: np.ndarray, rend_vals: np.ndarray, transform,
+                        mascara: np.ndarray, tamano_bloque_km: float = 30.0) -> dict:
+    """Agrega celdas válidas por bloque de 30 km calculando medias, centroides y superbloques 2x2."""
+    grilla = _asignar_grilla_bloques(transform, mascara, tamano_bloque_km)
+    unique_b, first_idx, block_indices = np.unique(
+        grilla['block_ids'], return_index=True, return_inverse=True
+    )
+    counts = np.bincount(block_indices)
+    apt_b = np.bincount(block_indices, weights=apt_vals) / counts
+    rend_b = np.bincount(block_indices, weights=rend_vals) / counts
+    x_centro = np.bincount(block_indices, weights=grilla['xs']) / counts
+    y_centro = np.bincount(block_indices, weights=grilla['ys']) / counts
+    coords_b = np.column_stack((x_centro, y_centro))
+    superblock_b = grilla['superblock_ids'][first_idx]
+
+    return {
+        'apt_b': apt_b,
+        'rend_b': rend_b,
+        'coords_b': coords_b,
+        'counts': counts,
+        'block_indices': block_indices,
+        'superblock_b': superblock_b,
+        'n_bloques': int(len(unique_b)),
+        'n_superbloques': int(len(np.unique(superblock_b))),
+        'mediana_celdas_por_bloque': int(np.median(counts)),
+    }
+
+
+def prueba_t_dutilleul(x: np.ndarray, y: np.ndarray, coords: np.ndarray,
+                       usar_rangos: bool = True, n_clases: int | None = None) -> dict:
+    """Prueba t modificada de Dutilleul (1993) para correlación espacial con autocorrelación.
+
+    Estima los grados de libertad efectivos (gl_efectivos) corrigiendo la varianza del
+    coeficiente de correlación mediante las matrices de autocovarianza espacial por clases
+    de distancia (Dutilleul, 1993, Biometrics 49: 305-314).
+
+    Parámetros:
+        x, y: Vectores 1D de valores por bloque/sitio.
+        coords: Array (n, 2) con coordenadas espaciales en metros (UTM 19S).
+        usar_rangos: Si True, transforma x e y a rangos (coherente con Spearman);
+                     si False, evalúa sobre las medias crudas (Pearson).
+        n_clases: Número de clases de distancia; por defecto usa la regla de Sturges.
+    """
+    x_arr = np.asarray(x, dtype=np.float64)
+    y_arr = np.asarray(y, dtype=np.float64)
+    coords_arr = np.asarray(coords, dtype=np.float64)
+
+    valido = np.isfinite(x_arr) & np.isfinite(y_arr) & np.all(np.isfinite(coords_arr), axis=1)
+    x_arr = x_arr[valido]
+    y_arr = y_arr[valido]
+    coords_arr = coords_arr[valido]
+
+    n = len(x_arr)
+    gl_clasicos = max(0, n - 2)
+    clave_r = 'rho' if usar_rangos else 'r'
+
+    if n < 4:
+        return {
+            clave_r: 0.0,
+            'gl_clasicos': gl_clasicos,
+            'gl_efectivos': float(gl_clasicos),
+            'factor_reduccion_gl': 1.0,
+            't_estadistico': 0.0,
+            'p_valor': 1.0,
+            'n_clases_distancia': 0,
+        }
+
+    vx = rankdata(x_arr, method='average') if usar_rangos else x_arr
+    vy = rankdata(y_arr, method='average') if usar_rangos else y_arr
+
+    dx = vx - np.mean(vx)
+    dy = vy - np.mean(vy)
+    ss_x = float(np.dot(dx, dx))
+    ss_y = float(np.dot(dy, dy))
+    if ss_x <= 0.0 or ss_y <= 0.0:
+        return {
+            clave_r: 0.0,
+            'gl_clasicos': gl_clasicos,
+            'gl_efectivos': float(gl_clasicos),
+            'factor_reduccion_gl': 1.0,
+            't_estadistico': 0.0,
+            'p_valor': 1.0,
+            'n_clases_distancia': 0,
+        }
+
+    r = float(np.clip(np.dot(dx, dy) / np.sqrt(ss_x * ss_y), -1.0, 1.0))
+
+    dists_pares = pdist(coords_arr, metric='euclidean')
+    n_pares = len(dists_pares)
+    if n_clases is None:
+        n_clases = max(3, int(np.ceil(1.0 + 3.322 * np.log10(max(n_pares, 2)))))
+
+    d_min = float(dists_pares.min())
+    d_max = float(dists_pares.max())
+
+    # Sin variación espacial en coordenadas, no es posible estimar lags de distancia
+    if d_max <= d_min:
+        t_est = r * np.sqrt(gl_clasicos / max(1.0 - r * r, 1e-12))
+        p_val = float(2.0 * student_t.sf(abs(t_est), df=max(gl_clasicos, 1)))
+        return {
+            clave_r: round(r, 4),
+            'gl_clasicos': gl_clasicos,
+            'gl_efectivos': float(gl_clasicos),
+            'factor_reduccion_gl': 1.0,
+            't_estadistico': round(float(t_est), 4),
+            'p_valor': round(p_val, 6),
+            'n_clases_distancia': 1,
+        }
+
+    iu, ju = np.triu_indices(n, k=1)
+    prod_x = dx[iu] * dx[ju]
+    prod_y = dy[iu] * dy[ju]
+
+    # Construir matrices de autocovarianza muestral por clase de distancia
+    bordes = np.linspace(d_min, d_max, n_clases + 1)
+    sigma_x = np.eye(n, dtype=np.float64) * (ss_x / n)
+    sigma_y = np.eye(n, dtype=np.float64) * (ss_y / n)
+
+    clases_activas = 0
+    for k in range(n_clases):
+        if k < n_clases - 1:
+            mask_k = (dists_pares >= bordes[k]) & (dists_pares < bordes[k + 1])
+        else:
+            mask_k = (dists_pares >= bordes[k]) & (dists_pares <= bordes[k + 1])
+
+        if not np.any(mask_k):
+            continue
+
+        clases_activas += 1
+        cov_x_k = float(np.mean(prod_x[mask_k]))
+        cov_y_k = float(np.mean(prod_y[mask_k]))
+        ik = iu[mask_k]
+        jk = ju[mask_k]
+        sigma_x[ik, jk] = cov_x_k
+        sigma_x[jk, ik] = cov_x_k
+        sigma_y[ik, jk] = cov_y_k
+        sigma_y[jk, ik] = cov_y_k
+
+    # Matriz de centrado B = I - (1/n) 1 1^T aplicada directamente sobre filas/columnas
+    sigma_xc = (
+        sigma_x
+        - sigma_x.mean(axis=1, keepdims=True)
+        - sigma_x.mean(axis=0, keepdims=True)
+        + sigma_x.mean()
+    )
+    sigma_yc = (
+        sigma_y
+        - sigma_y.mean(axis=1, keepdims=True)
+        - sigma_y.mean(axis=0, keepdims=True)
+        + sigma_y.mean()
+    )
+
+    tr_x = float(np.trace(sigma_xc))
+    tr_y = float(np.trace(sigma_yc))
+    tr_xy = float(np.sum(sigma_xc * sigma_yc))
+
+    if tr_xy <= 1e-15 or tr_x <= 0.0 or tr_y <= 0.0:
+        v_hat = float(gl_clasicos)
+    else:
+        v_hat = (tr_x * tr_y) / tr_xy - 1.0
+        # Resguardo numérico en muestras pequeñas o con lags ruidosos
+        v_hat = max(v_hat, 1.0)
+
+    if abs(r) >= 1.0 - 1e-12:
+        t_est = np.sign(r) * np.inf
+        p_val = 0.0
+    else:
+        t_est = r * np.sqrt(v_hat / (1.0 - r * r))
+        p_val = float(2.0 * student_t.sf(abs(t_est), df=v_hat))
+
+    return {
+        clave_r: round(r, 4),
+        'gl_clasicos': gl_clasicos,
+        'gl_efectivos': round(float(v_hat), 2),
+        'factor_reduccion_gl': round(float(v_hat / gl_clasicos), 4) if gl_clasicos > 0 else 1.0,
+        't_estadistico': round(float(t_est), 4) if np.isfinite(t_est) else float(t_est),
+        'p_valor': round(p_val, 6),
+        'n_clases_distancia': clases_activas,
+    }
+
+
+def _spearman_rapido(x: np.ndarray, y: np.ndarray, fallback_rho: float) -> float:
+    """Calcula rho de Spearman sin el overhead de p-valor ni validaciones repetidas."""
+    rx = rankdata(x, method='average')
+    ry = rankdata(y, method='average')
+    dx = rx - rx.mean()
+    dy = ry - ry.mean()
+    denom = float(np.sqrt(np.dot(dx, dx) * np.dot(dy, dy)))
+    if denom <= 0.0:
+        return float(fallback_rho)
+    return float(np.clip(np.dot(dx, dy) / denom, -1.0, 1.0))
+
+
+def _evaluar_lote_grupos(grupos_data: list, lotes_idx: np.ndarray, fallback_rho: float) -> np.ndarray:
+    """Evalúa un lote de réplicas bootstrap sobre grupos espaciales pre-indexados."""
+    out = np.empty(len(lotes_idx), dtype=np.float64)
+    for k, sampled_gi in enumerate(lotes_idx):
+        a_parts = [grupos_data[gi][0] for gi in sampled_gi if len(grupos_data[gi][0]) > 0]
+        r_parts = [grupos_data[gi][1] for gi in sampled_gi if len(grupos_data[gi][1]) > 0]
+        if a_parts:
+            out[k] = _spearman_rapido(np.concatenate(a_parts), np.concatenate(r_parts), fallback_rho)
+        else:
+            out[k] = fallback_rho
+    return out
+
+
+def _bootstrap_spearman_por_grupos(apt_vals: np.ndarray, rend_vals: np.ndarray,
+                                   group_ids: np.ndarray, n_bootstrap: int,
+                                   rng: np.random.Generator, fallback_rho: float) -> dict:
+    """Ejecuta bootstrap espacial remuestreando con reemplazo grupos espaciales completos."""
+    unique_g, inv_g = np.unique(group_ids, return_inverse=True)
+    n_grupos = len(unique_g)
+
+    if n_grupos < 2:
+        return {
+            'n_grupos': int(n_grupos),
+            'ic_95_inferior': round(float(fallback_rho), 4),
+            'ic_95_superior': round(float(fallback_rho), 4),
+            'std_bootstrap': 0.0,
+        }
+
+    # Si cada grupo contiene exactamente 1 observación (p. ej. bloques de 30 km), se indexa directo
+    if n_grupos == len(apt_vals):
+        boot_rhos = np.empty(n_bootstrap, dtype=np.float64)
+        for i in range(n_bootstrap):
+            idx = rng.choice(n_grupos, size=n_grupos, replace=True)
+            boot_rhos[i] = _spearman_rapido(apt_vals[idx], rend_vals[idx], fallback_rho)
+    else:
+        grupos_data = [
+            (apt_vals[inv_g == gi], rend_vals[inv_g == gi])
+            for gi in range(n_grupos)
+        ]
+        matriz_muestreos = rng.integers(0, n_grupos, size=(n_bootstrap, n_grupos))
+        # Paralelizar solo cuando el volumen por réplica justifica el arranque de workers
+        if len(apt_vals) > 5000 and n_bootstrap >= 500:
+            n_workers = max(1, min(os.cpu_count() or 1, 12))
+            lotes = np.array_split(matriz_muestreos, n_workers * 2)
+            partes = joblib.Parallel(n_jobs=n_workers)(
+                joblib.delayed(_evaluar_lote_grupos)(grupos_data, lote, fallback_rho)
+                for lote in lotes if len(lote) > 0
+            )
+            boot_rhos = np.concatenate(partes)
+        else:
+            boot_rhos = _evaluar_lote_grupos(grupos_data, matriz_muestreos, fallback_rho)
+
+    ic = np.nanpercentile(boot_rhos, [2.5, 97.5])
+    return {
+        'n_grupos': int(n_grupos),
+        'ic_95_inferior': round(float(ic[0]), 4),
+        'ic_95_superior': round(float(ic[1]), 4),
+        'std_bootstrap': round(float(np.nanstd(boot_rhos)), 4),
+    }
+
+
+def _evaluar_ambito_desacople(apt_vals: np.ndarray, rend_vals: np.ndarray, transform,
+                              mascara: np.ndarray, tamano_bloque_km: float,
+                              n_bootstrap: int, submuestra_max: int,
+                              rng_clasico: np.random.Generator,
+                              rng_super: np.random.Generator) -> dict:
+    """Calcula correlaciones por celda y por bloque (incluyendo Dutilleul y superbloques 2x2)."""
+    rho_celda, pval_celda = spearmanr(apt_vals, rend_vals)
+    agregado = _agregar_por_bloques(apt_vals, rend_vals, transform, mascara, tamano_bloque_km)
+
+    apt_b = agregado['apt_b']
+    rend_b = agregado['rend_b']
+    rho_bloque, pval_bloque = spearmanr(apt_b, rend_b)
+
+    # Bootstrap de bloques de 30 km (unidad = bloque individual)
+    boot_bloque = _bootstrap_spearman_por_grupos(
+        apt_b, rend_b, np.arange(agregado['n_bloques']), n_bootstrap, rng_clasico, rho_bloque
+    )
+
+    # Cluster/Block bootstrap para correlación por celda (submuestreo uniforme para eficiencia)
+    sub_paso = max(1, len(apt_vals) // submuestra_max)
+    sub_idx = np.arange(0, len(apt_vals), sub_paso)
+    boot_celda = _bootstrap_spearman_por_grupos(
+        apt_vals[sub_idx],
+        rend_vals[sub_idx],
+        agregado['block_indices'][sub_idx],
+        n_bootstrap,
+        rng_clasico,
+        rho_celda,
+    )
+
+    # Control espacial 1: Prueba t modificada de Dutilleul (1993) sobre rangos y medias crudas
+    dutilleul_spearman = prueba_t_dutilleul(
+        apt_b, rend_b, agregado['coords_b'], usar_rangos=True
+    )
+    dutilleul_pearson = prueba_t_dutilleul(
+        apt_b, rend_b, agregado['coords_b'], usar_rangos=False
+    )
+
+    # Control espacial 2: Bootstrap espacial con superbloques 2x2 (60 km)
+    boot_super = _bootstrap_spearman_por_grupos(
+        apt_b, rend_b, agregado['superblock_b'], n_bootstrap, rng_super, rho_bloque
+    )
+
+    return {
+        'n_celdas': int(len(apt_vals)),
+        'n_bloques_30km': agregado['n_bloques'],
+        'n_superbloques_60km': agregado['n_superbloques'],
+        'mediana_celdas_por_bloque': agregado['mediana_celdas_por_bloque'],
+        'spearman_celda': {
+            'rho': round(float(rho_celda), 4),
+            'p_valor': float(pval_celda),
+            'ic_95_inferior': boot_celda['ic_95_inferior'],
+            'ic_95_superior': boot_celda['ic_95_superior'],
+            'std_bootstrap': boot_celda['std_bootstrap'],
+        },
+        'spearman_bloque': {
+            'rho': round(float(rho_bloque), 4),
+            'p_valor': round(float(pval_bloque), 6),
+            'ic_95_inferior': boot_bloque['ic_95_inferior'],
+            'ic_95_superior': boot_bloque['ic_95_superior'],
+            'std_bootstrap': boot_bloque['std_bootstrap'],
+            'dutilleul_spearman': dutilleul_spearman,
+            'dutilleul_pearson': dutilleul_pearson,
+            'bootstrap_superbloques_60km': {
+                'n_superbloques': boot_super['n_grupos'],
+                'tamano_superbloque_km': float(tamano_bloque_km * 2.0),
+                'ic_95_inferior': boot_super['ic_95_inferior'],
+                'ic_95_superior': boot_super['ic_95_superior'],
+                'std_bootstrap': boot_super['std_bootstrap'],
+            },
+        },
+    }
 
 
 def calcular_estadisticas_desacople(cruce: dict, tamano_bloque_km: float = 30.0,
-                                   n_bootstrap: int = 1000, random_state: int = 42) -> dict:
+                                   n_bootstrap: int = 10000, random_state: int = 42) -> dict:
     """Calcula todas las métricas de desacople requeridas:
 
     - Rendimiento medio y mediano regional vs. celdas aptas.
     - Correlación de Spearman por celda y por bloque de 30 km.
     - Intervalo de confianza por Bootstrap espacial de bloques al 95%.
+    - Control espacial 1: Prueba t modificada de Dutilleul (rangos/Spearman y medias crudas/Pearson).
+    - Control espacial 2: Bootstrap espacial con superbloques de 2x2 bloques (60 km).
     """
     aptitud = cruce['aptitud']
     rendimiento = cruce['rendimiento']
@@ -300,148 +645,42 @@ def calcular_estadisticas_desacople(cruce: dict, tamano_bloque_km: float = 30.0,
     transform = cruce['transform']
     stats_base = cruce['stats']
 
-    # 1. Vectores de celdas válidas a nivel regional
-    apt_reg = aptitud[base_valida]
-    rend_reg = rendimiento[base_valida]
-    bloques_reg = asignar_bloques_a_celdas(transform, base_valida, tamano_bloque_km)
+    rng_clasico = np.random.default_rng(random_state)
+    # Flujo independiente para superbloques 2x2 preservando reproducibilidad del flujo base
+    rng_super = np.random.default_rng(np.random.SeedSequence([random_state, 60]))
 
-    # 2. Correlación de Spearman celda a celda (Región)
-    rho_celda_reg, pval_celda_reg = spearmanr(apt_reg, rend_reg)
+    region = _evaluar_ambito_desacople(
+        aptitud[base_valida],
+        rendimiento[base_valida],
+        transform,
+        base_valida,
+        tamano_bloque_km,
+        n_bootstrap,
+        submuestra_max=200_000,
+        rng_clasico=rng_clasico,
+        rng_super=rng_super,
+    )
 
-    # 3. Agregación vectorizada por bloques espaciales (30 km) a nivel regional
-    unique_b, block_indices_reg = np.unique(bloques_reg, return_inverse=True)
-    n_bloques_reg = len(unique_b)
-    counts_reg = np.bincount(block_indices_reg)
-    apt_b_reg = np.bincount(block_indices_reg, weights=apt_reg) / counts_reg
-    rend_b_reg = np.bincount(block_indices_reg, weights=rend_reg) / counts_reg
-
-    rho_bloque_reg, pval_bloque_reg = spearmanr(apt_b_reg, rend_b_reg)
-
-    # 4. Bootstrap espacial de bloques al 95% para Spearman regional
-    rng = np.random.default_rng(random_state)
-    boot_rhos_bloque_reg = np.empty(n_bootstrap)
-    for i in range(n_bootstrap):
-        idx_b = rng.choice(n_bloques_reg, size=n_bloques_reg, replace=True)
-        boot_rhos_bloque_reg[i] = spearmanr(apt_b_reg[idx_b], rend_b_reg[idx_b]).statistic
-
-    ic_bloque_reg = np.percentile(boot_rhos_bloque_reg, [2.5, 97.5])
-    se_bloque_reg = float(boot_rhos_bloque_reg.std())
-
-    # Cluster/Block bootstrap para celda regional (submuestreo representativo 1:100 para eficiencia extrema)
-    sub_paso = max(1, len(apt_reg) // 200_000)
-    sub_idx = np.arange(0, len(apt_reg), sub_paso)
-    sub_apt = apt_reg[sub_idx]
-    sub_rend = rend_reg[sub_idx]
-    sub_bi = block_indices_reg[sub_idx]
-
-    # Pre-indexar arrays por bloque (0..n_bloques_reg - 1)
-    block_cell_data = [
-        (sub_apt[sub_bi == bi], sub_rend[sub_bi == bi])
-        for bi in range(n_bloques_reg)
-    ]
-
-    boot_rhos_celda_reg = np.empty(n_bootstrap)
-    for i in range(n_bootstrap):
-        sampled_bi = rng.choice(n_bloques_reg, size=n_bloques_reg, replace=True)
-        a_parts = [block_cell_data[bi][0] for bi in sampled_bi if len(block_cell_data[bi][0]) > 0]
-        r_parts = [block_cell_data[bi][1] for bi in sampled_bi if len(block_cell_data[bi][1]) > 0]
-        if a_parts:
-            boot_rhos_celda_reg[i] = spearmanr(np.concatenate(a_parts), np.concatenate(r_parts)).statistic
-        else:
-            boot_rhos_celda_reg[i] = rho_celda_reg
-
-    ic_celda_reg = np.percentile(boot_rhos_celda_reg, [2.5, 97.5])
-    se_celda_reg = float(boot_rhos_celda_reg.std())
-
-    # 5. Evaluación análoga en el subconjunto de celdas aptas (P >= 0.70)
-    apt_aptas = aptitud[aptas]
-    rend_aptas = rendimiento[aptas]
-    bloques_aptas = asignar_bloques_a_celdas(transform, aptas, tamano_bloque_km)
-
-    rho_celda_aptas, pval_celda_aptas = spearmanr(apt_aptas, rend_aptas)
-
-    unique_ba, block_indices_aptas = np.unique(bloques_aptas, return_inverse=True)
-    n_bloques_aptas = len(unique_ba)
-    counts_aptas = np.bincount(block_indices_aptas)
-    apt_b_aptas = np.bincount(block_indices_aptas, weights=apt_aptas) / counts_aptas
-    rend_b_aptas = np.bincount(block_indices_aptas, weights=rend_aptas) / counts_aptas
-
-    rho_bloque_aptas, pval_bloque_aptas = spearmanr(apt_b_aptas, rend_b_aptas)
-
-    boot_rhos_bloque_aptas = np.empty(n_bootstrap)
-    for i in range(n_bootstrap):
-        idx_ba = rng.choice(n_bloques_aptas, size=n_bloques_aptas, replace=True)
-        boot_rhos_bloque_aptas[i] = spearmanr(apt_b_aptas[idx_ba], rend_b_aptas[idx_ba]).statistic
-
-    ic_bloque_aptas = np.percentile(boot_rhos_bloque_aptas, [2.5, 97.5])
-    se_bloque_aptas = float(boot_rhos_bloque_aptas.std())
-
-    # Cluster/Block bootstrap para celda en subconjunto de celdas aptas
-    sub_paso_a = max(1, len(apt_aptas) // 100_000)
-    sub_idx_a = np.arange(0, len(apt_aptas), sub_paso_a)
-    sub_apt_a = apt_aptas[sub_idx_a]
-    sub_rend_a = rend_aptas[sub_idx_a]
-    sub_bi_a = block_indices_aptas[sub_idx_a]
-
-    block_cell_data_aptas = [
-        (sub_apt_a[sub_bi_a == bi], sub_rend_a[sub_bi_a == bi])
-        for bi in range(n_bloques_aptas)
-    ]
-
-    boot_rhos_celda_aptas = np.empty(n_bootstrap)
-    for i in range(n_bootstrap):
-        sampled_bia = rng.choice(n_bloques_aptas, size=n_bloques_aptas, replace=True)
-        a_parts = [block_cell_data_aptas[bi][0] for bi in sampled_bia if len(block_cell_data_aptas[bi][0]) > 0]
-        r_parts = [block_cell_data_aptas[bi][1] for bi in sampled_bia if len(block_cell_data_aptas[bi][1]) > 0]
-        if a_parts:
-            boot_rhos_celda_aptas[i] = spearmanr(np.concatenate(a_parts), np.concatenate(r_parts)).statistic
-        else:
-            boot_rhos_celda_aptas[i] = rho_celda_aptas
-
-    ic_celda_aptas = np.percentile(boot_rhos_celda_aptas, [2.5, 97.5])
-    se_celda_aptas = float(boot_rhos_celda_aptas.std())
+    aptas_res = _evaluar_ambito_desacople(
+        aptitud[aptas],
+        rendimiento[aptas],
+        transform,
+        aptas,
+        tamano_bloque_km,
+        n_bootstrap,
+        submuestra_max=100_000,
+        rng_clasico=rng_clasico,
+        rng_super=rng_super,
+    )
 
     resultados = {
         'resumen_rendimiento': stats_base,
         'tamano_bloque_km': tamano_bloque_km,
+        'tamano_superbloque_km': float(tamano_bloque_km * 2.0),
         'n_bootstrap': n_bootstrap,
         'random_state': random_state,
-        'region': {
-            'n_celdas': int(base_valida.sum()),
-            'n_bloques_30km': n_bloques_reg,
-            'spearman_celda': {
-                'rho': round(float(rho_celda_reg), 4),
-                'p_valor': float(pval_celda_reg),
-                'ic_95_inferior': round(float(ic_celda_reg[0]), 4),
-                'ic_95_superior': round(float(ic_celda_reg[1]), 4),
-                'std_bootstrap': round(se_celda_reg, 4),
-            },
-            'spearman_bloque': {
-                'rho': round(float(rho_bloque_reg), 4),
-                'p_valor': round(float(pval_bloque_reg), 6),
-                'ic_95_inferior': round(float(ic_bloque_reg[0]), 4),
-                'ic_95_superior': round(float(ic_bloque_reg[1]), 4),
-                'std_bootstrap': round(se_bloque_reg, 4),
-            },
-        },
-        'aptas': {
-            'n_celdas': int(aptas.sum()),
-            'n_bloques_30km': n_bloques_aptas,
-            'spearman_celda': {
-                'rho': round(float(rho_celda_aptas), 4),
-                'p_valor': float(pval_celda_aptas),
-                'ic_95_inferior': round(float(ic_celda_aptas[0]), 4),
-                'ic_95_superior': round(float(ic_celda_aptas[1]), 4),
-                'std_bootstrap': round(se_celda_aptas, 4),
-            },
-            'spearman_bloque': {
-                'rho': round(float(rho_bloque_aptas), 4),
-                'p_valor': round(float(pval_bloque_aptas), 4),
-                'ic_95_inferior': round(float(ic_bloque_aptas[0]), 4),
-                'ic_95_superior': round(float(ic_bloque_aptas[1]), 4),
-                'std_bootstrap': round(se_bloque_aptas, 4),
-            },
-        },
+        'region': region,
+        'aptas': aptas_res,
     }
 
     return resultados
@@ -555,6 +794,28 @@ def exportar_tabla_csv(resultados: dict, out_csv_path: str) -> pd.DataFrame:
         },
         {
             'categoria': 'Estructura Espacial',
+            'metrica': 'mediana_celdas_por_bloque_30km_region',
+            'ambito': 'Region Completa',
+            'valor': reg['mediana_celdas_por_bloque'],
+            'unidad': 'celdas/bloque',
+            'ic_95_inferior': '',
+            'ic_95_superior': '',
+            'p_valor': '',
+            'descripcion': 'Mediana de celdas válidas por bloque de 30 km en la región',
+        },
+        {
+            'categoria': 'Estructura Espacial',
+            'metrica': 'n_superbloques_espaciales_60km_region',
+            'ambito': 'Region Completa',
+            'valor': reg['n_superbloques_60km'],
+            'unidad': 'superbloques',
+            'ic_95_inferior': '',
+            'ic_95_superior': '',
+            'p_valor': '',
+            'descripcion': 'Número de superbloques 2x2 (60 km) con al menos un bloque válido',
+        },
+        {
+            'categoria': 'Estructura Espacial',
             'metrica': 'n_bloques_espaciales_30km_aptas',
             'ambito': 'Zonas Aptas',
             'valor': apt['n_bloques_30km'],
@@ -563,6 +824,17 @@ def exportar_tabla_csv(resultados: dict, out_csv_path: str) -> pd.DataFrame:
             'ic_95_superior': '',
             'p_valor': '',
             'descripcion': 'Número de bloques de 30 km que contienen al menos una celda apta',
+        },
+        {
+            'categoria': 'Estructura Espacial',
+            'metrica': 'n_superbloques_espaciales_60km_aptas',
+            'ambito': 'Zonas Aptas',
+            'valor': apt['n_superbloques_60km'],
+            'unidad': 'superbloques',
+            'ic_95_inferior': '',
+            'ic_95_superior': '',
+            'p_valor': '',
+            'descripcion': 'Número de superbloques 2x2 (60 km) con al menos un bloque apto',
         },
         {
             'categoria': 'Correlación de Spearman',
@@ -584,7 +856,51 @@ def exportar_tabla_csv(resultados: dict, out_csv_path: str) -> pd.DataFrame:
             'ic_95_inferior': reg['spearman_bloque']['ic_95_inferior'],
             'ic_95_superior': reg['spearman_bloque']['ic_95_superior'],
             'p_valor': reg['spearman_bloque']['p_valor'],
-            'descripcion': 'Correlación de Spearman agregada a nivel de bloque (SBCV 30 km)',
+            'descripcion': 'Correlación de Spearman agregada a nivel de bloque (SBCV 30 km, bootstrap por bloques de 30 km)',
+        },
+        {
+            'categoria': 'Control Espacial (Dutilleul)',
+            'metrica': 'spearman_dutilleul_bloques_30km_regional',
+            'ambito': 'Agregada por Bloques de 30 km (Región)',
+            'valor': reg['spearman_bloque']['dutilleul_spearman']['rho'],
+            'unidad': 'rho',
+            'ic_95_inferior': '',
+            'ic_95_superior': '',
+            'p_valor': reg['spearman_bloque']['dutilleul_spearman']['p_valor'],
+            'descripcion': (
+                f"Prueba t modificada de Dutilleul sobre rangos (Spearman): "
+                f"gl_clasicos={reg['spearman_bloque']['dutilleul_spearman']['gl_clasicos']} -> "
+                f"gl_efectivos={reg['spearman_bloque']['dutilleul_spearman']['gl_efectivos']}"
+            ),
+        },
+        {
+            'categoria': 'Control Espacial (Dutilleul)',
+            'metrica': 'pearson_dutilleul_bloques_30km_regional',
+            'ambito': 'Agregada por Bloques de 30 km (Región)',
+            'valor': reg['spearman_bloque']['dutilleul_pearson']['r'],
+            'unidad': 'r',
+            'ic_95_inferior': '',
+            'ic_95_superior': '',
+            'p_valor': reg['spearman_bloque']['dutilleul_pearson']['p_valor'],
+            'descripcion': (
+                f"Prueba t modificada de Dutilleul sobre medias crudas (Pearson): "
+                f"gl_clasicos={reg['spearman_bloque']['dutilleul_pearson']['gl_clasicos']} -> "
+                f"gl_efectivos={reg['spearman_bloque']['dutilleul_pearson']['gl_efectivos']}"
+            ),
+        },
+        {
+            'categoria': 'Control Espacial (Superbloques 60 km)',
+            'metrica': 'spearman_bootstrap_superbloques_60km_regional',
+            'ambito': 'Agregada por Bloques 30 km, IC en Superbloques 2x2 (Región)',
+            'valor': reg['spearman_bloque']['rho'],
+            'unidad': 'rho',
+            'ic_95_inferior': reg['spearman_bloque']['bootstrap_superbloques_60km']['ic_95_inferior'],
+            'ic_95_superior': reg['spearman_bloque']['bootstrap_superbloques_60km']['ic_95_superior'],
+            'p_valor': '',
+            'descripcion': (
+                f"Bootstrap espacial por superbloques 2x2 de 60 km "
+                f"(G={reg['spearman_bloque']['bootstrap_superbloques_60km']['n_superbloques']})"
+            ),
         },
         {
             'categoria': 'Correlación de Spearman',
@@ -607,6 +923,50 @@ def exportar_tabla_csv(resultados: dict, out_csv_path: str) -> pd.DataFrame:
             'ic_95_superior': apt['spearman_bloque']['ic_95_superior'],
             'p_valor': apt['spearman_bloque']['p_valor'],
             'descripcion': 'Correlación de Spearman agregada por bloque en celdas aptas',
+        },
+        {
+            'categoria': 'Control Espacial (Dutilleul)',
+            'metrica': 'spearman_dutilleul_bloques_30km_aptas',
+            'ambito': 'Agregada por Bloques de 30 km (Aptas)',
+            'valor': apt['spearman_bloque']['dutilleul_spearman']['rho'],
+            'unidad': 'rho',
+            'ic_95_inferior': '',
+            'ic_95_superior': '',
+            'p_valor': apt['spearman_bloque']['dutilleul_spearman']['p_valor'],
+            'descripcion': (
+                f"Prueba t modificada de Dutilleul sobre rangos (Spearman, aptas): "
+                f"gl_clasicos={apt['spearman_bloque']['dutilleul_spearman']['gl_clasicos']} -> "
+                f"gl_efectivos={apt['spearman_bloque']['dutilleul_spearman']['gl_efectivos']}"
+            ),
+        },
+        {
+            'categoria': 'Control Espacial (Dutilleul)',
+            'metrica': 'pearson_dutilleul_bloques_30km_aptas',
+            'ambito': 'Agregada por Bloques de 30 km (Aptas)',
+            'valor': apt['spearman_bloque']['dutilleul_pearson']['r'],
+            'unidad': 'r',
+            'ic_95_inferior': '',
+            'ic_95_superior': '',
+            'p_valor': apt['spearman_bloque']['dutilleul_pearson']['p_valor'],
+            'descripcion': (
+                f"Prueba t modificada de Dutilleul sobre medias crudas (Pearson, aptas): "
+                f"gl_clasicos={apt['spearman_bloque']['dutilleul_pearson']['gl_clasicos']} -> "
+                f"gl_efectivos={apt['spearman_bloque']['dutilleul_pearson']['gl_efectivos']}"
+            ),
+        },
+        {
+            'categoria': 'Control Espacial (Superbloques 60 km)',
+            'metrica': 'spearman_bootstrap_superbloques_60km_aptas',
+            'ambito': 'Agregada por Bloques 30 km, IC en Superbloques 2x2 (Aptas)',
+            'valor': apt['spearman_bloque']['rho'],
+            'unidad': 'rho',
+            'ic_95_inferior': apt['spearman_bloque']['bootstrap_superbloques_60km']['ic_95_inferior'],
+            'ic_95_superior': apt['spearman_bloque']['bootstrap_superbloques_60km']['ic_95_superior'],
+            'p_valor': '',
+            'descripcion': (
+                f"Bootstrap espacial por superbloques 2x2 de 60 km en aptas "
+                f"(G={apt['spearman_bloque']['bootstrap_superbloques_60km']['n_superbloques']})"
+            ),
         },
         {
             'categoria': 'Metodología Bootstrap',
